@@ -259,32 +259,76 @@ df_filtrado = df[
 st.sidebar.info(f"Mostrando {len(df_filtrado)} registros de {len(df)} totales")
 
 # ---------- KPIS GENERALES ----------
+# ---------- VERIFICAR FILTROS APLICADOS ----------
+st.sidebar.write("---")
+st.sidebar.write(f"📊 **Resumen de filtros:**")
+st.sidebar.write(f"- Rango: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}")
+st.sidebar.write(f"- Secciones: {len(secciones_seleccionadas)} seleccionadas")
+st.sidebar.write(f"- Registros mostrados: {len(df_filtrado)}")
+
+# ---------- KPIS GENERALES ----------
 st.subheader(f"📈 Comparación: {año_base} vs {año_comparar}")
 
-# Calcular métricas por año
-metricas_base = df_filtrado[df_filtrado["anio"] == año_base].agg({
-    "venta": "sum",
-    "entradas": "sum",
-    "tickets": "sum",
-    "articulos": "sum"
-})
+# Verificar que hay datos para los años seleccionados dentro del rango filtrado
+datos_base_filtrados = df_filtrado[df_filtrado["anio"] == año_base]
+datos_comparar_filtrados = df_filtrado[df_filtrado["anio"] == año_comparar]
 
-metricas_comparar = df_filtrado[df_filtrado["anio"] == año_comparar].agg({
-    "venta": "sum",
-    "entradas": "sum",
-    "tickets": "sum",
-    "articulos": "sum"
-})
+if datos_base_filtrados.empty and datos_comparar_filtrados.empty:
+    st.warning(f"No hay datos para los años {año_base} y {año_comparar} en el rango de fechas seleccionado")
+    st.stop()
+elif datos_base_filtrados.empty:
+    st.warning(f"No hay datos para el año {año_base} en el rango de fechas seleccionado")
+    # Mostrar solo datos del año a comparar
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(f"Ventas {año_comparar}", f"${datos_comparar_filtrados['venta'].sum():,.0f}")
+    with col2:
+        st.metric(f"Entradas {año_comparar}", f"{datos_comparar_filtrados['entradas'].sum():,.0f}")
+    with col3:
+        ticket_prom = datos_comparar_filtrados['venta'].sum() / datos_comparar_filtrados['tickets'].sum() if datos_comparar_filtrados['tickets'].sum() > 0 else 0
+        st.metric(f"Ticket Prom. {año_comparar}", f"${ticket_prom:,.2f}")
+    with col4:
+        st.metric(f"Tasa Conv. {año_comparar}", f"{datos_comparar_filtrados['tasa_conversion'].mean():.2f}%")
+    st.stop()
+elif datos_comparar_filtrados.empty:
+    st.warning(f"No hay datos para el año {año_comparar} en el rango de fechas seleccionado")
+    # Mostrar solo datos del año base
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(f"Ventas {año_base}", f"${datos_base_filtrados['venta'].sum():,.0f}")
+    with col2:
+        st.metric(f"Entradas {año_base}", f"{datos_base_filtrados['entradas'].sum():,.0f}")
+    with col3:
+        ticket_prom = datos_base_filtrados['venta'].sum() / datos_base_filtrados['tickets'].sum() if datos_base_filtrados['tickets'].sum() > 0 else 0
+        st.metric(f"Ticket Prom. {año_base}", f"${ticket_prom:,.2f}")
+    with col4:
+        st.metric(f"Tasa Conv. {año_base}", f"{datos_base_filtrados['tasa_conversion'].mean():.2f}%")
+    st.stop()
 
-# Verificar si hay datos para ambos años
-if metricas_base["venta"] == 0 or metricas_comparar["venta"] == 0:
-    st.info(f"⚠️ No hay datos completos para ambos años. Años con datos: {', '.join(map(str, años_disponibles))}")
+# Calcular métricas por año con los datos filtrados
+metricas_base = {
+    "venta": datos_base_filtrados["venta"].sum(),
+    "entradas": datos_base_filtrados["entradas"].sum(),
+    "tickets": datos_base_filtrados["tickets"].sum(),
+    "articulos": datos_base_filtrados["articulos"].sum()
+}
+
+metricas_comparar = {
+    "venta": datos_comparar_filtrados["venta"].sum(),
+    "entradas": datos_comparar_filtrados["entradas"].sum(),
+    "tickets": datos_comparar_filtrados["tickets"].sum(),
+    "articulos": datos_comparar_filtrados["articulos"].sum()
+}
 
 # Calcular ticket promedio y artículos por ticket
 ticket_prom_base = metricas_base["venta"] / metricas_base["tickets"] if metricas_base["tickets"] > 0 else 0
 ticket_prom_comparar = metricas_comparar["venta"] / metricas_comparar["tickets"] if metricas_comparar["tickets"] > 0 else 0
 
-# Mostrar KPIs
+# Calcular tasas de conversión promedio
+tasa_base = datos_base_filtrados["tasa_conversion"].mean() if not datos_base_filtrados.empty else 0
+tasa_comparar = datos_comparar_filtrados["tasa_conversion"].mean() if not datos_comparar_filtrados.empty else 0
+
+# Mostrar KPIs con los datos filtrados
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -318,8 +362,6 @@ with col3:
     st.caption(f"{año_base}: ${ticket_prom_base:,.2f}")
 
 with col4:
-    tasa_base = df_filtrado[df_filtrado['anio'] == año_base]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == año_base].empty else 0
-    tasa_comparar = df_filtrado[df_filtrado['anio'] == año_comparar]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == año_comparar].empty else 0
     delta_tasa = tasa_comparar - tasa_base if tasa_base > 0 else None
     st.metric(
         f"Tasa Conv. {año_comparar}",
@@ -328,6 +370,9 @@ with col4:
         delta_color="normal" if delta_tasa is not None else "off"
     )
     st.caption(f"{año_base}: {tasa_base:.2f}%")
+
+# Mostrar información del período filtrado
+st.info(f"📅 Mostrando datos del {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')} | Secciones: {', '.join(secciones_seleccionadas[:3])}{'...' if len(secciones_seleccionadas) > 3 else ''}")
 
 # ---------- ANÁLISIS POR SECCIÓN ----------
 st.subheader(f"📊 Comparación por Sección: {año_base} vs {año_comparar}")
