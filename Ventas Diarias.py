@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import locale
+import calendar
 
 # Intentar configurar locale en español
 try:
@@ -31,7 +32,15 @@ MESES_ES = {
 }
 
 # Diccionario de días en español
-DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+DIAS_ES = {
+    0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves',
+    4: 'Viernes', 5: 'Sábado', 6: 'Domingo'
+}
+
+DIAS_ES_ABR = {
+    0: 'Lun', 1: 'Mar', 2: 'Mié', 3: 'Jue',
+    4: 'Vie', 5: 'Sáb', 6: 'Dom'
+}
 
 # ---------- ESTILO LIMPIO Y PROFESIONAL ----------
 st.markdown("""
@@ -165,6 +174,21 @@ st.markdown("""
         padding-bottom: 0.5rem;
         border-bottom: 1px solid #e9ecef;
     }
+    
+    /* Estilo para comparador de días */
+    .day-comparator {
+        background-color: #e7f5ff;
+        border: 1px solid #74c0fc;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .day-comparator-title {
+        color: #1864ab;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -174,6 +198,13 @@ def formato_fecha_es(fecha):
     if isinstance(fecha, str):
         fecha = pd.to_datetime(fecha)
     return f"{fecha.day} de {MESES_ES[fecha.month]} de {fecha.year}"
+
+# Función para obtener el nombre del día en español
+def dia_semana_es(fecha):
+    """Devuelve el nombre del día de la semana en español"""
+    if isinstance(fecha, str):
+        fecha = pd.to_datetime(fecha)
+    return DIAS_ES[fecha.weekday()]
 
 # ---------- DB ----------
 DB_DIR = "data"
@@ -313,33 +344,123 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Rango de fechas con formato español
-    st.markdown("#### 📅 Rango de fechas")
+    # Tipo de comparación
+    st.markdown("#### 🔍 Tipo de Comparación")
+    tipo_comparacion = st.radio(
+        "Seleccionar modo",
+        ["📅 Rango de fechas", "📆 Mismo día de la semana", "🎯 Fecha específica"],
+        help="Elige cómo quieres comparar los períodos"
+    )
+    
+    st.markdown("---")
     
     df["fecha"] = pd.to_datetime(df["fecha"])
     fecha_min = df["fecha"].min().date()
     fecha_max = df["fecha"].max().date()
     
-    col1, col2 = st.columns(2)
-    with col1:
-        fecha_inicio = st.date_input(
-            "Desde",
+    if tipo_comparacion == "📅 Rango de fechas":
+        st.markdown("#### 📅 Rango de fechas")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            fecha_inicio = st.date_input(
+                "Desde",
+                fecha_min,
+                min_value=fecha_min,
+                max_value=fecha_max,
+                key="fecha_inicio_rango"
+            )
+        with col2:
+            fecha_fin = st.date_input(
+                "Hasta",
+                fecha_max,
+                min_value=fecha_min,
+                max_value=fecha_max,
+                key="fecha_fin_rango"
+            )
+        
+        # Aplicar el mismo rango a ambos años
+        fecha_inicio_base = fecha_inicio
+        fecha_fin_base = fecha_fin
+        fecha_inicio_comp = fecha_inicio
+        fecha_fin_comp = fecha_fin
+        
+        st.caption(f"📆 {formato_fecha_es(fecha_inicio)} → {formato_fecha_es(fecha_fin)}")
+    
+    elif tipo_comparacion == "📆 Mismo día de la semana":
+        st.markdown("#### 📆 Comparar mismo día de la semana")
+        
+        # Seleccionar semana de referencia
+        semanas_disponibles = sorted(df[df["anio"] == año_comparar]["fecha"].dt.isocalendar().week.unique())
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            semana_ref = st.selectbox(
+                "Semana de referencia",
+                options=semanas_disponibles,
+                help="Número de semana del año"
+            )
+        with col2:
+            dia_ref = st.selectbox(
+                "Día de la semana",
+                options=list(DIAS_ES.values()),
+                index=4,  # Viernes por defecto
+                help="Día a comparar"
+            )
+        
+        # Convertir día seleccionado a número (0-6)
+        dia_num = list(DIAS_ES.keys())[list(DIAS_ES.values()).index(dia_ref)]
+        
+        # Encontrar fechas para ambos años
+        df_comp_semana = df[(df["anio"] == año_comparar) & 
+                           (df["fecha"].dt.isocalendar().week == semana_ref) &
+                           (df["fecha"].dt.weekday == dia_num)]
+        
+        df_base_semana = df[(df["anio"] == año_base) & 
+                           (df["fecha"].dt.isocalendar().week == semana_ref) &
+                           (df["fecha"].dt.weekday == dia_num)]
+        
+        if not df_comp_semana.empty and not df_base_semana.empty:
+            fecha_inicio_comp = df_comp_semana["fecha"].iloc[0].date()
+            fecha_fin_comp = fecha_inicio_comp
+            fecha_inicio_base = df_base_semana["fecha"].iloc[0].date()
+            fecha_fin_base = fecha_inicio_base
+            
+            st.markdown(f"""
+                <div class='day-comparator'>
+                    <div class='day-comparator-title'>📆 Comparación seleccionada:</div>
+                    <div>{año_base}: {formato_fecha_es(fecha_inicio_base)} ({dia_ref})</div>
+                    <div>{año_comparar}: {formato_fecha_es(fecha_inicio_comp)} ({dia_ref})</div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.warning("No hay datos para la combinación seleccionada")
+            fecha_inicio_base = fecha_min
+            fecha_fin_base = fecha_max
+            fecha_inicio_comp = fecha_min
+            fecha_fin_comp = fecha_max
+    
+    else:  # Fecha específica
+        st.markdown("#### 🎯 Fecha específica")
+        
+        fecha_especifica = st.date_input(
+            "Seleccionar fecha",
             fecha_min,
             min_value=fecha_min,
-            max_value=fecha_max,
-            help="Selecciona la fecha inicial"
+            max_value=fecha_max
         )
-    with col2:
-        fecha_fin = st.date_input(
-            "Hasta",
-            fecha_max,
-            min_value=fecha_min,
-            max_value=fecha_max,
-            help="Selecciona la fecha final"
-        )
-    
-    # Mostrar fechas seleccionadas en español
-    st.caption(f"📆 {formato_fecha_es(fecha_inicio)} → {formato_fecha_es(fecha_fin)}")
+        
+        # Encontrar la misma fecha en ambos años
+        fecha_comp = fecha_especifica.replace(year=año_comparar)
+        fecha_base = fecha_especifica.replace(year=año_base)
+        
+        fecha_inicio_base = fecha_base
+        fecha_fin_base = fecha_base
+        fecha_inicio_comp = fecha_comp
+        fecha_fin_comp = fecha_comp
+        
+        st.caption(f"📆 {año_base}: {formato_fecha_es(fecha_base)}")
+        st.caption(f"📆 {año_comparar}: {formato_fecha_es(fecha_comp)}")
     
     st.markdown("---")
     
@@ -353,23 +474,46 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Resumen
-    mask = (
-        (df["fecha"].dt.date >= fecha_inicio) &
-        (df["fecha"].dt.date <= fecha_fin) &
-        (df["secciones"].isin(secciones_seleccionadas))
-    )
-    df_filtrado = df[mask]
+    # Resumen con filtros separados por año
+    if tipo_comparacion == "📅 Rango de fechas":
+        mask_base = (
+            (df["fecha"].dt.date >= fecha_inicio_base) &
+            (df["fecha"].dt.date <= fecha_fin_base) &
+            (df["anio"] == año_base) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        )
+        mask_comp = (
+            (df["fecha"].dt.date >= fecha_inicio_comp) &
+            (df["fecha"].dt.date <= fecha_fin_comp) &
+            (df["anio"] == año_comparar) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        )
+    else:
+        mask_base = (
+            (df["fecha"].dt.date == fecha_inicio_base) &
+            (df["anio"] == año_base) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        )
+        mask_comp = (
+            (df["fecha"].dt.date == fecha_inicio_comp) &
+            (df["anio"] == año_comparar) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        )
     
-    st.metric("📋 Registros filtrados", f"{len(df_filtrado):,}")
-    st.caption(f"Total en BD: {len(df):,} registros")
+    df_base = df[mask_base]
+    df_comp = df[mask_comp]
+    df_filtrado = pd.concat([df_base, df_comp])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(f"📋 Registros {año_base}", f"{len(df_base):,}")
+    with col2:
+        st.metric(f"📋 Registros {año_comparar}", f"{len(df_comp):,}")
+    
+    st.caption(f"Total BD: {len(df):,} registros")
 
 # ---------- MÉTRICAS PRINCIPALES ----------
 st.subheader("📈 Métricas Principales")
-
-# Calcular métricas por año
-df_base = df_filtrado[df_filtrado["anio"] == año_base]
-df_comp = df_filtrado[df_filtrado["anio"] == año_comparar]
 
 # Ventas
 ventas_base = df_base["venta"].sum()
@@ -503,390 +647,64 @@ with col3:
         </div>
     """, unsafe_allow_html=True)
 
-# ---------- GRÁFICAS COMPARATIVAS ----------
-st.subheader("📊 Análisis Comparativo por Indicador")
+# ---------- ANÁLISIS POR SECCIÓN ----------
+st.subheader("📋 Análisis por Sección")
 
-# Preparar datos para gráficas
-df_graf = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
-df_graf["mes"] = df_graf["fecha"].dt.month
-df_graf["nombre_mes"] = df_graf["mes"].map(MESES_ES)
-
-# Crear pestañas para diferentes tipos de análisis
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📈 Evolución Temporal", 
-    "📊 Comparativa Mensual",
-    "🥧 Distribución",
-    "📉 Análisis de Ratios"
-])
-
-with tab1:
-    # Gráficas de evolución temporal para cada métrica
-    col1, col2 = st.columns(2)
+if not df_base.empty and not df_comp.empty:
+    secciones_unicas = set(df_base["secciones"].unique()) | set(df_comp["secciones"].unique())
+    datos_seccion = []
     
-    with col1:
-        # Ventas por mes
-        df_ventas_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["venta"].sum().reset_index()
-        df_ventas_mensual = df_ventas_mensual.sort_values("mes")
+    for seccion in secciones_unicas:
+        datos_base = df_base[df_base["secciones"] == seccion]
+        datos_comp = df_comp[df_comp["secciones"] == seccion]
         
-        fig = px.line(
-            df_ventas_mensual,
-            x="nombre_mes",
-            y="venta",
-            color="anio",
-            title="Evolución de Ventas por Mes",
-            labels={"nombre_mes": "Mes", "venta": "Ventas ($)", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
+        if not datos_base.empty and not datos_comp.empty:
+            venta_base = datos_base["venta"].sum()
+            venta_comp = datos_comp["venta"].sum()
+            var_venta = ((venta_comp - venta_base) / venta_base * 100) if venta_base > 0 else 0
+            
+            entradas_base = datos_base["entradas"].sum()
+            entradas_comp = datos_comp["entradas"].sum()
+            
+            tickets_base = datos_base["tickets"].sum()
+            tickets_comp = datos_comp["tickets"].sum()
+            
+            ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
+            ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
+            
+            tasa_base = datos_base["tasa_conversion"].mean()
+            tasa_comp = datos_comp["tasa_conversion"].mean()
+            
+            datos_seccion.append({
+                "Sección": seccion,
+                f"Ventas {año_base}": f"${venta_base:,.0f}",
+                f"Ventas {año_comparar}": f"${venta_comp:,.0f}",
+                "Var %": f"{var_venta:+.1f}%",
+                f"Ticket Prom {año_comparar}": f"${ticket_prom_comp:,.2f}",
+                "Var Ticket": f"{((ticket_prom_comp - ticket_prom_base) / ticket_prom_base * 100):+.1f}%" if ticket_prom_base > 0 else "N/A",
+                f"Tasa {año_comparar}": f"{tasa_comp:.2f}%",
+                "Delta Tasa": f"{(tasa_comp - tasa_base):+.2f} pp"
+            })
     
-    with col2:
-        # Entradas por mes
-        df_entradas_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["entradas"].sum().reset_index()
-        df_entradas_mensual = df_entradas_mensual.sort_values("mes")
-        
-        fig = px.line(
-            df_entradas_mensual,
-            x="nombre_mes",
-            y="entradas",
-            color="anio",
-            title="Evolución de Entradas por Mes",
-            labels={"nombre_mes": "Mes", "entradas": "Entradas", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Tickets por mes
-        df_tickets_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["tickets"].sum().reset_index()
-        df_tickets_mensual = df_tickets_mensual.sort_values("mes")
-        
-        fig = px.line(
-            df_tickets_mensual,
-            x="nombre_mes",
-            y="tickets",
-            color="anio",
-            title="Evolución de Tickets por Mes",
-            labels={"nombre_mes": "Mes", "tickets": "Tickets", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Artículos por mes
-        df_articulos_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["articulos"].sum().reset_index()
-        df_articulos_mensual = df_articulos_mensual.sort_values("mes")
-        
-        fig = px.line(
-            df_articulos_mensual,
-            x="nombre_mes",
-            y="articulos",
-            color="anio",
-            title="Evolución de Artículos por Mes",
-            labels={"nombre_mes": "Mes", "articulos": "Artículos", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-    # Gráficas de barras comparativas
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Comparativa ventas por mes
-        fig = px.bar(
-            df_ventas_mensual,
-            x="nombre_mes",
-            y="venta",
-            color="anio",
-            title="Comparativa de Ventas por Mes",
-            barmode="group",
-            labels={"nombre_mes": "Mes", "venta": "Ventas ($)", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Comparativa entradas por mes
-        fig = px.bar(
-            df_entradas_mensual,
-            x="nombre_mes",
-            y="entradas",
-            color="anio",
-            title="Comparativa de Entradas por Mes",
-            barmode="group",
-            labels={"nombre_mes": "Mes", "entradas": "Entradas", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Comparativa tickets por mes
-        fig = px.bar(
-            df_tickets_mensual,
-            x="nombre_mes",
-            y="tickets",
-            color="anio",
-            title="Comparativa de Tickets por Mes",
-            barmode="group",
-            labels={"nombre_mes": "Mes", "tickets": "Tickets", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Comparativa artículos por mes
-        fig = px.bar(
-            df_articulos_mensual,
-            x="nombre_mes",
-            y="articulos",
-            color="anio",
-            title="Comparativa de Artículos por Mes",
-            barmode="group",
-            labels={"nombre_mes": "Mes", "articulos": "Artículos", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
-    # Gráficas de distribución
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Distribución de ventas por sección (año a comparar)
-        df_seccion_comp = df_comp.groupby("secciones")["venta"].sum().reset_index()
-        
-        fig = px.pie(
-            df_seccion_comp,
-            values="venta",
-            names="secciones",
-            title=f"Distribución de Ventas por Sección - {año_comparar}",
-            color_discrete_sequence=px.colors.sequential.Viridis
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Distribución de ventas por sección (año base)
-        df_seccion_base = df_base.groupby("secciones")["venta"].sum().reset_index()
-        
-        fig = px.pie(
-            df_seccion_base,
-            values="venta",
-            names="secciones",
-            title=f"Distribución de Ventas por Sección - {año_base}",
-            color_discrete_sequence=px.colors.sequential.Plasma
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Distribución de entradas por sección
-        df_entradas_seccion = df_graf.groupby(["secciones", "anio"])["entradas"].sum().reset_index()
-        
-        fig = px.bar(
-            df_entradas_seccion,
-            x="secciones",
-            y="entradas",
-            color="anio",
-            title="Entradas por Sección",
-            barmode="group",
-            labels={"secciones": "Sección", "entradas": "Entradas", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Distribución de tickets por sección
-        df_tickets_seccion = df_graf.groupby(["secciones", "anio"])["tickets"].sum().reset_index()
-        
-        fig = px.bar(
-            df_tickets_seccion,
-            x="secciones",
-            y="tickets",
-            color="anio",
-            title="Tickets por Sección",
-            barmode="group",
-            labels={"secciones": "Sección", "tickets": "Tickets", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab4:
-    # Análisis de ratios
-    col1, col2 = st.columns(2)
-    
-    # Calcular ratios por mes
-    df_ratios = df_graf.groupby(["anio", "mes", "nombre_mes"]).agg({
-        "venta": "sum",
-        "entradas": "sum",
-        "tickets": "sum",
-        "articulos": "sum"
-    }).reset_index()
-    
-    df_ratios["ticket_promedio"] = df_ratios["venta"] / df_ratios["tickets"]
-    df_ratios["articulos_por_ticket"] = df_ratios["articulos"] / df_ratios["tickets"]
-    df_ratios["tasa_conversion"] = (df_ratios["tickets"] / df_ratios["entradas"] * 100)
-    df_ratios = df_ratios.sort_values("mes")
-    
-    with col1:
-        # Ticket promedio por mes
-        fig = px.line(
-            df_ratios,
-            x="nombre_mes",
-            y="ticket_promedio",
-            color="anio",
-            title="Evolución del Ticket Promedio",
-            labels={"nombre_mes": "Mes", "ticket_promedio": "Ticket Promedio ($)", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Artículos por ticket por mes
-        fig = px.line(
-            df_ratios,
-            x="nombre_mes",
-            y="articulos_por_ticket",
-            color="anio",
-            title="Evolución de Artículos por Ticket",
-            labels={"nombre_mes": "Mes", "articulos_por_ticket": "Artículos/Ticket", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Tasa de conversión por mes
-        fig = px.line(
-            df_ratios,
-            x="nombre_mes",
-            y="tasa_conversion",
-            color="anio",
-            title="Evolución de la Tasa de Conversión",
-            labels={"nombre_mes": "Mes", "tasa_conversion": "Tasa de Conversión (%)", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Comparativa de ratios (barras)
-        df_ratios_agg = df_ratios.groupby("anio")[["ticket_promedio", "articulos_por_ticket", "tasa_conversion"]].mean().reset_index()
-        df_ratios_melt = pd.melt(
-            df_ratios_agg, 
-            id_vars=["anio"], 
-            value_vars=["ticket_promedio", "articulos_por_ticket", "tasa_conversion"],
-            var_name="Métrica", 
-            value_name="Valor"
-        )
-        
-        fig = px.bar(
-            df_ratios_melt,
-            x="Métrica",
-            y="Valor",
-            color="anio",
-            title="Comparativa de Ratios Promedio",
-            barmode="group",
-            labels={"Métrica": "Métrica", "Valor": "Valor", "anio": "Año"},
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
-        st.plotly_chart(fig, use_container_width=True)
-
-# ---------- ANÁLISIS POR SECCIÓN (Tabla Detallada) ----------
-st.subheader("📋 Análisis Detallado por Sección")
-
-df_seccion_detalle = df_graf.groupby(["secciones", "anio"]).agg({
-    "venta": "sum",
-    "entradas": "sum",
-    "tickets": "sum",
-    "articulos": "sum",
-    "tasa_conversion": "mean"
-}).round(2).reset_index()
-
-# Calcular variaciones
-secciones_unicas = df_seccion_detalle["secciones"].unique()
-datos_detalle = []
-
-for seccion in secciones_unicas:
-    datos = df_seccion_detalle[df_seccion_detalle["secciones"] == seccion]
-    datos_base = datos[datos["anio"] == año_base]
-    datos_comp = datos[datos["anio"] == año_comparar]
-    
-    if not datos_base.empty and not datos_comp.empty:
-        venta_base = datos_base["venta"].values[0]
-        venta_comp = datos_comp["venta"].values[0]
-        var_venta = ((venta_comp - venta_base) / venta_base * 100) if venta_base > 0 else 0
-        
-        entradas_base = datos_base["entradas"].values[0]
-        entradas_comp = datos_comp["entradas"].values[0]
-        var_entradas = ((entradas_comp - entradas_base) / entradas_base * 100) if entradas_base > 0 else 0
-        
-        tickets_base = datos_base["tickets"].values[0]
-        tickets_comp = datos_comp["tickets"].values[0]
-        var_tickets = ((tickets_comp - tickets_base) / tickets_base * 100) if tickets_base > 0 else 0
-        
-        ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
-        ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
-        var_ticket_prom = ((ticket_prom_comp - ticket_prom_base) / ticket_prom_base * 100) if ticket_prom_base > 0 else 0
-        
-        tasa_base = datos_base["tasa_conversion"].values[0]
-        tasa_comp = datos_comp["tasa_conversion"].values[0]
-        delta_tasa = tasa_comp - tasa_base
-        
-        datos_detalle.append({
-            "Sección": seccion,
-            f"Ventas {año_base}": f"${venta_base:,.0f}",
-            f"Ventas {año_comparar}": f"${venta_comp:,.0f}",
-            "Var Ventas": f"{var_venta:+.1f}%",
-            f"Entradas {año_base}": f"{entradas_base:,.0f}",
-            f"Entradas {año_comparar}": f"{entradas_comp:,.0f}",
-            "Var Entradas": f"{var_entradas:+.1f}%",
-            "Ticket Prom Comp": f"${ticket_prom_comp:,.2f}",
-            "Var Ticket": f"{var_ticket_prom:+.1f}%",
-            "Tasa Conv Comp": f"{tasa_comp:.2f}%",
-            "Delta Tasa": f"{delta_tasa:+.2f} pp"
-        })
-
-if datos_detalle:
-    st.dataframe(pd.DataFrame(datos_detalle), use_container_width=True, hide_index=True)
+    if datos_seccion:
+        st.dataframe(pd.DataFrame(datos_seccion), use_container_width=True, hide_index=True)
 
 # ---------- RESUMEN DEL PERÍODO ----------
-with st.expander("📅 Resumen del período seleccionado"):
+with st.expander("📅 Detalle del período seleccionado"):
     st.markdown(f"""
-    **Período analizado:** {formato_fecha_es(fecha_inicio)} → {formato_fecha_es(fecha_fin)}
+    **Tipo de comparación:** {tipo_comparacion}
     
-    - **Años comparados:** {año_base} vs {año_comparar}
-    - **Secciones incluidas:** {', '.join(secciones_seleccionadas)}
-    - **Total de registros:** {len(df_filtrado):,}
+    **{año_base}:**
+    - Período: {formato_fecha_es(fecha_inicio_base)} → {formato_fecha_es(fecha_fin_base)}
+    - Días incluidos: {(fecha_fin_base - fecha_inicio_base).days + 1} días
+    - Registros: {len(df_base):,}
     
-    **Resumen de variaciones:**
-    - Ventas: {delta_ventas:+.1f}%
-    - Entradas: {delta_entradas:+.1f}%
-    - Tickets: {delta_tickets:+.1f}%
-    - Artículos: {delta_articulos:+.1f}%
-    - Ticket Promedio: {delta_ticket_prom:+.1f}%
-    - Artículos/Ticket: {delta_articulos_x_ticket:+.1f}%
-    - Tasa Conversión: {delta_tasa:+.2f} pp
+    **{año_comparar}:**
+    - Período: {formato_fecha_es(fecha_inicio_comp)} → {formato_fecha_es(fecha_fin_comp)}
+    - Días incluidos: {(fecha_fin_comp - fecha_inicio_comp).days + 1} días
+    - Registros: {len(df_comp):,}
+    
+    **Secciones incluidas:** {', '.join(secciones_seleccionadas)}
     """)
 
 # ---------- PIE DE PÁGINA ----------
