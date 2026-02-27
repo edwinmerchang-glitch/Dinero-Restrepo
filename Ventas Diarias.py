@@ -3,11 +3,73 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import os
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import calendar
 
-st.set_page_config(page_title="Comparador de Ventas", layout="wide")
+st.set_page_config(
+    page_title="Comparador de Ventas Diarias", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS para mejor apariencia
+st.markdown("""
+<style>
+    /* Estilos generales */
+    .stApp {
+        background-color: #f8f9fa;
+    }
+    
+    /* Tarjetas para métricas */
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: transform 0.3s ease;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Títulos de secciones */
+    .section-title {
+        color: #1f77b4;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 2rem 0 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 3px solid #1f77b4;
+    }
+    
+    /* Badges para filtros */
+    .filter-badge {
+        background-color: #e1f5fe;
+        color: #01579b;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+        margin: 0.2rem;
+    }
+    
+    /* Contenedor de filtros activos */
+    .active-filters {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #1f77b4;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------- DB ----------
-# Crear directorio data si no existe
 DB_DIR = "data"
 if not os.path.exists(DB_DIR):
     os.makedirs(DB_DIR)
@@ -67,22 +129,24 @@ def crear_tabla():
 crear_tabla()
 
 # ---------- CARGA ----------
+st.title("📊 Comparador de Ventas Diarias")
+st.markdown("### Análisis Comparativo Interanual")
 
-st.title("📊 Comparador de Ventas Diarias — Comparación Interanual")
+with st.expander("📤 Cargar Excel", expanded=False):
+    col_upload1, col_upload2 = st.columns([2, 1])
+    with col_upload1:
+        archivo = st.file_uploader("Sube archivo Excel", type=["xlsx"])
+    with col_upload2:
+        anio = st.number_input("Año:", 
+                              min_value=2000, 
+                              max_value=2100, 
+                              value=datetime.now().year,
+                              step=1)
 
-with st.expander("📤 Cargar Excel"):
-    archivo = st.file_uploader("Sube archivo Excel", type=["xlsx"])
-    anio = st.number_input("Selecciona el año:", 
-                          min_value=2000, 
-                          max_value=2100, 
-                          value=datetime.now().year,
-                          step=1)
-
-    if archivo and st.button("Guardar datos"):
+    if archivo and st.button("📥 Guardar datos", use_container_width=True):
         try:
             df = pd.read_excel(archivo)
 
-            # Verificar que el archivo tenga las columnas requeridas
             columnas_requeridas = ["Fecha", "Secciones", "Entradas", "Venta", 
                                   "Tickets", "Artículos", "Ticket promedio", 
                                   "Artículos por ticket", "Tasa de conversión"]
@@ -90,9 +154,8 @@ with st.expander("📤 Cargar Excel"):
             columnas_faltantes = [col for col in columnas_requeridas if col not in df.columns]
             
             if columnas_faltantes:
-                st.error(f"El archivo debe contener las siguientes columnas: {', '.join(columnas_faltantes)}")
+                st.error(f"El archivo debe contener: {', '.join(columnas_faltantes)}")
             else:
-                # Renombrar columnas para que coincidan con la base de datos
                 df = df.rename(columns={
                     "Fecha": "fecha",
                     "Secciones": "secciones",
@@ -105,30 +168,25 @@ with st.expander("📤 Cargar Excel"):
                     "Tasa de conversión": "tasa_conversion"
                 })
                 
-                # Agregar columna de año
                 df["anio"] = anio
+                df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
                 
                 # Convertir tipos de datos
-                df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
-                df["entradas"] = pd.to_numeric(df["entradas"], errors='coerce')
-                df["venta"] = pd.to_numeric(df["venta"], errors='coerce')
-                df["tickets"] = pd.to_numeric(df["tickets"], errors='coerce')
-                df["articulos"] = pd.to_numeric(df["articulos"], errors='coerce')
-                df["ticket_promedio"] = pd.to_numeric(df["ticket_promedio"], errors='coerce')
-                df["articulos_por_ticket"] = pd.to_numeric(df["articulos_por_ticket"], errors='coerce')
-                df["tasa_conversion"] = pd.to_numeric(df["tasa_conversion"], errors='coerce')
+                for col in ["entradas", "venta", "tickets", "articulos", 
+                           "ticket_promedio", "articulos_por_ticket", "tasa_conversion"]:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
                 
                 conn = conectar()
                 if conn is not None:
                     df.to_sql("ventas", conn, if_exists="append", index=False)
                     conn.close()
-                    st.success(f"Datos del año {anio} cargados correctamente ({len(df)} registros)")
+                    st.success(f"✅ Datos del año {anio} cargados correctamente ({len(df)} registros)")
+                    st.balloons()
                     
         except Exception as e:
             st.error(f"Error al cargar el archivo: {e}")
 
 # ---------- CONSULTAS ----------
-
 def cargar_datos():
     """Carga todos los datos de la base de datos"""
     conn = conectar()
@@ -146,558 +204,524 @@ def cargar_datos():
 df = cargar_datos()
 
 if df.empty:
-    st.warning("Aún no hay datos cargados")
+    st.warning("⚠️ Aún no hay datos cargados")
     st.stop()
 
-# ---------- SELECCIÓN DE AÑOS A COMPARAR ----------
-st.sidebar.header("Configuración de Comparación")
-
-# Obtener años disponibles en la base de datos
-años_disponibles = sorted(df["anio"].unique(), reverse=True)
-
-if len(años_disponibles) == 0:
-    st.warning("No hay años disponibles en la base de datos")
-    st.stop()
-
-# Selectores de años
-col_selector1, col_selector2 = st.sidebar.columns(2)
-with col_selector1:
-    año_base = st.selectbox("Año base (anterior)", 
-                           options=años_disponibles,
-                           index=min(1, len(años_disponibles)-1) if len(años_disponibles) > 1 else 0)
-with col_selector2:
-    año_comparar = st.selectbox("Año a comparar (actual)", 
-                               options=años_disponibles,
-                               index=0)
-
-# Verificar que sean años diferentes
-if año_base == año_comparar and len(años_disponibles) > 1:
-    st.sidebar.warning("Selecciona dos años diferentes para comparar")
-    # Ajustar automáticamente
-    if año_comparar == años_disponibles[0]:
-        año_base = años_disponibles[1] if len(años_disponibles) > 1 else año_base
-
-# ---------- FILTROS ADICIONALES ----------
-st.sidebar.header("Filtros")
-
-# Asegurar que la columna fecha sea datetime
-df["fecha"] = pd.to_datetime(df["fecha"])
-
-# Verificar que hay fechas válidas
-if df.empty or df["fecha"].isna().all():
-    st.warning("No hay datos con fechas válidas para filtrar")
-    st.stop()
-
-# Obtener fechas mínima y máxima
-fecha_min = df["fecha"].min()
-fecha_max = df["fecha"].max()
-
-# Filtro de rango de fechas en el sidebar
-st.sidebar.write("Seleccionar rango de fechas:")
-
-if fecha_min.date() == fecha_max.date():
-    # Si solo hay una fecha
-    fecha_seleccionada = st.sidebar.date_input(
-        "Fecha",
-        value=fecha_min.date(),
-        min_value=fecha_min.date(),
-        max_value=fecha_max.date(),
-        key="fecha_unica"
-    )
-    fecha_inicio = pd.Timestamp(fecha_seleccionada)
-    fecha_fin = pd.Timestamp(fecha_seleccionada)
-else:
-    # Si hay múltiples fechas
-    col_fecha1, col_fecha2 = st.sidebar.columns(2)
+# ---------- SIDEBAR - CONFIGURACIÓN ----------
+with st.sidebar:
+    st.markdown("### ⚙️ Configuración")
     
-    with col_fecha1:
-        fecha_inicio_sel = st.date_input(
-            "Fecha inicial",
+    # Años disponibles
+    años_disponibles = sorted(df["anio"].unique(), reverse=True)
+    
+    if len(años_disponibles) == 0:
+        st.warning("No hay años disponibles")
+        st.stop()
+    
+    # Selectores de años con diseño mejorado
+    st.markdown("#### 📅 Años a comparar")
+    col_anio1, col_anio2 = st.columns(2)
+    with col_anio1:
+        año_base = st.selectbox("Año base", 
+                               options=años_disponibles,
+                               index=min(1, len(años_disponibles)-1) if len(años_disponibles) > 1 else 0,
+                               help="Año anterior para comparar")
+    with col_anio2:
+        año_comparar = st.selectbox("Año actual", 
+                                   options=años_disponibles,
+                                   index=0,
+                                   help="Año más reciente para comparar")
+    
+    if año_base == año_comparar and len(años_disponibles) > 1:
+        st.warning("Selecciona años diferentes")
+        if año_comparar == años_disponibles[0]:
+            año_base = años_disponibles[1] if len(años_disponibles) > 1 else año_base
+    
+    st.markdown("---")
+    
+    # Filtros
+    st.markdown("#### 🔍 Filtros")
+    
+    # Preparar fechas
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    fecha_min = df["fecha"].min()
+    fecha_max = df["fecha"].max()
+    
+    # Selector de rango de fechas
+    if fecha_min.date() == fecha_max.date():
+        fecha_seleccionada = st.date_input(
+            "Fecha",
             value=fecha_min.date(),
             min_value=fecha_min.date(),
             max_value=fecha_max.date(),
-            key="fecha_inicio"
+            key="fecha_unica"
         )
+        fecha_inicio = pd.Timestamp(fecha_seleccionada)
+        fecha_fin = pd.Timestamp(fecha_seleccionada)
+    else:
+        col_fecha1, col_fecha2 = st.columns(2)
+        with col_fecha1:
+            fecha_inicio_sel = st.date_input(
+                "Fecha inicial",
+                value=fecha_min.date(),
+                min_value=fecha_min.date(),
+                max_value=fecha_max.date(),
+                key="fecha_inicio"
+            )
+        with col_fecha2:
+            fecha_fin_sel = st.date_input(
+                "Fecha final",
+                value=fecha_max.date(),
+                min_value=fecha_min.date(),
+                max_value=fecha_max.date(),
+                key="fecha_fin"
+            )
+        
+        fecha_inicio = pd.Timestamp(fecha_inicio_sel)
+        fecha_fin = pd.Timestamp(fecha_fin_sel)
+        
+        if fecha_inicio > fecha_fin:
+            st.error("La fecha inicial debe ser menor o igual a la fecha final")
+            fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
     
-    with col_fecha2:
-        fecha_fin_sel = st.date_input(
-            "Fecha final",
-            value=fecha_max.date(),
-            min_value=fecha_min.date(),
-            max_value=fecha_max.date(),
-            key="fecha_fin"
+    # Filtro de secciones
+    secciones = sorted(df["secciones"].unique())
+    secciones_seleccionadas = st.multiselect(
+        "Secciones",
+        options=secciones,
+        default=secciones,
+        key="secciones_filter",
+        help="Selecciona una o más secciones"
+    )
+    
+    # Aplicar filtros
+    df_filtrado = df[
+        (df["fecha"] >= fecha_inicio) &
+        (df["fecha"] <= fecha_fin) &
+        (df["secciones"].isin(secciones_seleccionadas))
+    ]
+    
+    # Resumen de filtros activos
+    st.markdown("---")
+    st.markdown("#### 📊 Filtros activos")
+    st.markdown(f"""
+    <div class="active-filters">
+        <span class="filter-badge">📅 {fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}</span>
+        <span class="filter-badge">🏷️ {len(secciones_seleccionadas)} secciones</span>
+        <span class="filter-badge">📋 {len(df_filtrado):,} registros</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ---------- DATOS FILTRADOS POR AÑO ----------
+datos_base = df_filtrado[df_filtrado["anio"] == año_base]
+datos_comparar = df_filtrado[df_filtrado["anio"] == año_comparar]
+
+# ---------- KPIS CON TARJETAS MODERNAS ----------
+st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar}</div>', unsafe_allow_html=True)
+
+if datos_base.empty and datos_comparar.empty:
+    st.warning("No hay datos para los años seleccionados en el rango de fechas")
+    st.stop()
+elif datos_base.empty:
+    st.info(f"Mostrando solo datos de {año_comparar}")
+    kpi_data = [(año_comparar, datos_comparar)]
+elif datos_comparar.empty:
+    st.info(f"Mostrando solo datos de {año_base}")
+    kpi_data = [(año_base, datos_base)]
+else:
+    kpi_data = [(año_base, datos_base), (año_comparar, datos_comparar)]
+
+# Calcular métricas
+if not datos_base.empty and not datos_comparar.empty:
+    ventas_base = datos_base["venta"].sum()
+    ventas_comp = datos_comparar["venta"].sum()
+    entradas_base = datos_base["entradas"].sum()
+    entradas_comp = datos_comparar["entradas"].sum()
+    
+    ticket_base = ventas_base / datos_base["tickets"].sum() if datos_base["tickets"].sum() > 0 else 0
+    ticket_comp = ventas_comp / datos_comparar["tickets"].sum() if datos_comparar["tickets"].sum() > 0 else 0
+    
+    tasa_base = datos_base["tasa_conversion"].mean()
+    tasa_comp = datos_comparar["tasa_conversion"].mean()
+    
+    # Crear tarjetas con estilo moderno
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        delta = ((ventas_comp - ventas_base)/ventas_base*100) if ventas_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Ventas {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">${ventas_comp:,.0f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${ventas_base:,.0f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        delta = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Entradas {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">{entradas_comp:,.0f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {entradas_base:,.0f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        delta = ((ticket_comp - ticket_base)/ticket_base*100) if ticket_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Ticket Prom. {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">${ticket_comp:,.2f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${ticket_base:,.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        delta = tasa_comp - tasa_base if tasa_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Tasa Conv. {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">{tasa_comp:.2f}%</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.2f} pp' if delta and delta > 0 else f'▼ {abs(delta):.2f} pp' if delta and delta < 0 else '0 pp'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {tasa_base:.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ---------- GRÁFICOS ROBUSTOS CON PLOTLY ----------
+st.markdown(f'<div class="section-title">📊 Análisis Visual</div>', unsafe_allow_html=True)
+
+if not datos_base.empty and not datos_comparar.empty:
+    # Preparar datos para gráficos
+    df_plot = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
+    df_plot['mes'] = df_plot['fecha'].dt.month
+    df_plot['mes_nombre'] = df_plot['fecha'].dt.strftime('%b')
+    df_plot['año_str'] = df_plot['anio'].astype(str)
+    
+    # Gráfico 1: Evolución mensual comparativa
+    df_mensual = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
+    
+    fig1 = px.line(
+        df_mensual,
+        x='mes_nombre',
+        y='venta',
+        color='anio',
+        title='Evolución Mensual de Ventas',
+        labels={'mes_nombre': 'Mes', 'venta': 'Ventas ($)', 'anio': 'Año'},
+        color_discrete_map={año_base: '#1f77b4', año_comparar: '#ff7f0e'},
+        line_shape='spline',
+        markers=True
+    )
+    
+    fig1.update_traces(
+        line=dict(width=3),
+        marker=dict(size=8)
+    )
+    
+    fig1.update_layout(
+        hovermode='x unified',
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(family="Arial", size=12),
+        title=dict(x=0.5, xanchor='center'),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
         )
+    )
     
-    fecha_inicio = pd.Timestamp(fecha_inicio_sel)
-    fecha_fin = pd.Timestamp(fecha_fin_sel)
+    fig1.update_xaxes(
+        categoryorder='array',
+        categoryarray=['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
+                      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+        gridcolor='lightgray'
+    )
     
-    # Validar que fecha_inicio <= fecha_fin
-    if fecha_inicio > fecha_fin:
-        st.sidebar.error("La fecha inicial debe ser menor o igual a la fecha final")
-        fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
-
-# Filtro de secciones
-secciones = sorted(df["secciones"].unique())
-secciones_seleccionadas = st.sidebar.multiselect(
-    "Secciones",
-    options=secciones,
-    default=secciones,
-    key="secciones_filter"
-)
-
-# Aplicar filtros usando comparación directa con Timestamps
-df_filtrado = df[
-    (df["fecha"] >= fecha_inicio) &
-    (df["fecha"] <= fecha_fin) &
-    (df["secciones"].isin(secciones_seleccionadas))
-]
-
-# Mostrar información de los filtros aplicados
-st.sidebar.info(f"Mostrando {len(df_filtrado)} registros de {len(df)} totales")
-
-# ---------- VERIFICAR FILTROS APLICADOS ----------
-st.sidebar.write("---")
-st.sidebar.write(f"📊 **Resumen de filtros:**")
-st.sidebar.write(f"- Rango: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}")
-st.sidebar.write(f"- Secciones: {len(secciones_seleccionadas)} seleccionadas")
-st.sidebar.write(f"- Registros mostrados: {len(df_filtrado)}")
-
-# ---------- KPIS GENERALES ----------
-st.subheader(f"📈 Comparación General: {año_base} vs {año_comparar}")
-
-# Verificar que hay datos para los años seleccionados dentro del rango filtrado
-datos_base_filtrados = df_filtrado[df_filtrado["anio"] == año_base]
-datos_comparar_filtrados = df_filtrado[df_filtrado["anio"] == año_comparar]
-
-if datos_base_filtrados.empty and datos_comparar_filtrados.empty:
-    st.warning(f"No hay datos para los años {año_base} y {año_comparar} en el rango de fechas seleccionado")
-    st.stop()
-elif datos_base_filtrados.empty:
-    st.warning(f"No hay datos para el año {año_base} en el rango de fechas seleccionado")
-    # Mostrar solo datos del año a comparar
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(f"Ventas {año_comparar}", f"${datos_comparar_filtrados['venta'].sum():,.0f}")
-    with col2:
-        st.metric(f"Entradas {año_comparar}", f"{datos_comparar_filtrados['entradas'].sum():,.0f}")
-    with col3:
-        ticket_prom = datos_comparar_filtrados['venta'].sum() / datos_comparar_filtrados['tickets'].sum() if datos_comparar_filtrados['tickets'].sum() > 0 else 0
-        st.metric(f"Ticket Prom. {año_comparar}", f"${ticket_prom:,.2f}")
-    with col4:
-        st.metric(f"Tasa Conv. {año_comparar}", f"{datos_comparar_filtrados['tasa_conversion'].mean():.2f}%")
-    st.stop()
-elif datos_comparar_filtrados.empty:
-    st.warning(f"No hay datos para el año {año_comparar} en el rango de fechas seleccionado")
-    # Mostrar solo datos del año base
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(f"Ventas {año_base}", f"${datos_base_filtrados['venta'].sum():,.0f}")
-    with col2:
-        st.metric(f"Entradas {año_base}", f"{datos_base_filtrados['entradas'].sum():,.0f}")
-    with col3:
-        ticket_prom = datos_base_filtrados['venta'].sum() / datos_base_filtrados['tickets'].sum() if datos_base_filtrados['tickets'].sum() > 0 else 0
-        st.metric(f"Ticket Prom. {año_base}", f"${ticket_prom:,.2f}")
-    with col4:
-        st.metric(f"Tasa Conv. {año_base}", f"{datos_base_filtrados['tasa_conversion'].mean():.2f}%")
-    st.stop()
-
-# Calcular métricas por año con los datos filtrados
-metricas_base = {
-    "venta": datos_base_filtrados["venta"].sum(),
-    "entradas": datos_base_filtrados["entradas"].sum(),
-    "tickets": datos_base_filtrados["tickets"].sum(),
-    "articulos": datos_base_filtrados["articulos"].sum()
-}
-
-metricas_comparar = {
-    "venta": datos_comparar_filtrados["venta"].sum(),
-    "entradas": datos_comparar_filtrados["entradas"].sum(),
-    "tickets": datos_comparar_filtrados["tickets"].sum(),
-    "articulos": datos_comparar_filtrados["articulos"].sum()
-}
-
-# Calcular ticket promedio y artículos por ticket
-ticket_prom_base = metricas_base["venta"] / metricas_base["tickets"] if metricas_base["tickets"] > 0 else 0
-ticket_prom_comparar = metricas_comparar["venta"] / metricas_comparar["tickets"] if metricas_comparar["tickets"] > 0 else 0
-
-# Calcular tasas de conversión promedio
-tasa_base = datos_base_filtrados["tasa_conversion"].mean() if not datos_base_filtrados.empty else 0
-tasa_comparar = datos_comparar_filtrados["tasa_conversion"].mean() if not datos_comparar_filtrados.empty else 0
-
-# Mostrar KPIs con los datos filtrados
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    delta_ventas = ((metricas_comparar['venta'] - metricas_base['venta'])/metricas_base['venta']*100) if metricas_base['venta'] > 0 else None
-    st.metric(
-        f"Ventas {año_comparar}",
-        f"${metricas_comparar['venta']:,.0f}",
-        delta=f"{delta_ventas:.1f}% vs {año_base}" if delta_ventas is not None else "Sin datos base",
-        delta_color="normal" if delta_ventas is not None else "off"
+    fig1.update_yaxes(gridcolor='lightgray')
+    
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Gráfico 2: Barras comparativas por sección
+    st.markdown("### 📊 Comparación por Sección")
+    
+    df_secciones = df_plot.groupby(['secciones', 'anio'])['venta'].sum().reset_index()
+    
+    fig2 = px.bar(
+        df_secciones,
+        x='secciones',
+        y='venta',
+        color='anio',
+        barmode='group',
+        title='Ventas por Sección - Comparativa Anual',
+        labels={'secciones': 'Sección', 'venta': 'Ventas ($)', 'anio': 'Año'},
+        color_discrete_map={año_base: '#1f77b4', año_comparar: '#ff7f0e'},
+        text_auto='.2s'
     )
-    st.caption(f"{año_base}: ${metricas_base['venta']:,.0f}")
-
-with col2:
-    delta_entradas = ((metricas_comparar['entradas'] - metricas_base['entradas'])/metricas_base['entradas']*100) if metricas_base['entradas'] > 0 else None
-    st.metric(
-        f"Entradas {año_comparar}",
-        f"{metricas_comparar['entradas']:,.0f}",
-        delta=f"{delta_entradas:.1f}% vs {año_base}" if delta_entradas is not None else "Sin datos base",
-        delta_color="normal" if delta_entradas is not None else "off"
+    
+    fig2.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(family="Arial", size=12),
+        title=dict(x=0.5, xanchor='center'),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
-    st.caption(f"{año_base}: {metricas_base['entradas']:,.0f}")
-
-with col3:
-    delta_ticket = ((ticket_prom_comparar - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
-    st.metric(
-        f"Ticket Prom. {año_comparar}",
-        f"${ticket_prom_comparar:,.2f}",
-        delta=f"{delta_ticket:.1f}% vs {año_base}" if delta_ticket is not None else "Sin datos base",
-        delta_color="normal" if delta_ticket is not None else "off"
+    
+    fig2.update_xaxes(gridcolor='lightgray')
+    fig2.update_yaxes(gridcolor='lightgray')
+    
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Gráfico 3: Distribución de tickets y entradas
+    st.markdown("### 📈 Análisis de Eficiencia")
+    
+    df_eficiencia = df_plot.groupby('anio').agg({
+        'tickets': 'sum',
+        'entradas': 'sum',
+        'ticket_promedio': 'mean'
+    }).reset_index()
+    
+    fig3 = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Tickets vs Entradas', 'Ticket Promedio'),
+        specs=[[{'type': 'bar'}, {'type': 'bar'}]]
     )
-    st.caption(f"{año_base}: ${ticket_prom_base:,.2f}")
-
-with col4:
-    delta_tasa = tasa_comparar - tasa_base if tasa_base > 0 else None
-    st.metric(
-        f"Tasa Conv. {año_comparar}",
-        f"{tasa_comparar:.2f}%",
-        delta=f"{delta_tasa:.2f} pp vs {año_base}" if delta_tasa is not None else "Sin datos base",
-        delta_color="normal" if delta_tasa is not None else "off"
+    
+    # Gráfico de barras para tickets y entradas
+    fig3.add_trace(
+        go.Bar(name='Tickets', x=df_eficiencia['anio'], y=df_eficiencia['tickets'],
+               marker_color='#1f77b4', text=df_eficiencia['tickets'].apply(lambda x: f'{x:,.0f}'),
+               textposition='outside'),
+        row=1, col=1
     )
-    st.caption(f"{año_base}: {tasa_base:.2f}%")
-
-# Mostrar información del período filtrado
-st.info(f"📅 Mostrando datos del {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')} | Secciones: {', '.join(secciones_seleccionadas[:3])}{'...' if len(secciones_seleccionadas) > 3 else ''}")
+    
+    fig3.add_trace(
+        go.Bar(name='Entradas', x=df_eficiencia['anio'], y=df_eficiencia['entradas'],
+               marker_color='#ff7f0e', text=df_eficiencia['entradas'].apply(lambda x: f'{x:,.0f}'),
+               textposition='outside'),
+        row=1, col=1
+    )
+    
+    # Gráfico de barras para ticket promedio
+    fig3.add_trace(
+        go.Bar(name='Ticket Promedio', x=df_eficiencia['anio'], y=df_eficiencia['ticket_promedio'],
+               marker_color='#2ca02c', text=df_eficiencia['ticket_promedio'].apply(lambda x: f'${x:,.2f}'),
+               textposition='outside'),
+        row=1, col=2
+    )
+    
+    fig3.update_layout(
+        showlegend=True,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        height=400,
+        title_text="Métricas de Eficiencia",
+        title_x=0.5
+    )
+    
+    fig3.update_xaxes(gridcolor='lightgray')
+    fig3.update_yaxes(gridcolor='lightgray')
+    
+    st.plotly_chart(fig3, use_container_width=True)
 
 # ---------- COMPARACIÓN DÍA A DÍA ----------
-st.subheader(f"📅 Comparación Día a Día: {año_base} vs {año_comparar}")
+st.markdown(f'<div class="section-title">📅 Comparación Día a Día</div>', unsafe_allow_html=True)
 
-# Configurar locale en español para los date pickers
-try:
-    import locale
-    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')  # Intentar configurar locale en español
-except:
-    pass  # Si no se puede configurar, seguir con el locale por defecto
-
-# Crear selector de fecha para comparación día a día
-st.write("Selecciona un día para comparar entre años:")
-
-# Obtener todas las fechas únicas del año base y año comparar para conocer los rangos
-fechas_base = df_filtrado[df_filtrado["anio"] == año_base]["fecha"].dt.date.unique()
-fechas_comparar = df_filtrado[df_filtrado["anio"] == año_comparar]["fecha"].dt.date.unique()
-
-if len(fechas_base) == 0 or len(fechas_comparar) == 0:
-    st.warning(f"No hay fechas disponibles para comparar entre {año_base} y {año_comparar} en el rango seleccionado")
-else:
-    # Determinar rangos de fechas mínimos y máximos para cada año
-    min_fecha_base = min(fechas_base)
-    max_fecha_base = max(fechas_base)
-    min_fecha_comparar = min(fechas_comparar)
-    max_fecha_comparar = max(fechas_comparar)
+if not datos_base.empty and not datos_comparar.empty:
+    # Selectores de fecha con diseño mejorado
+    col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
     
-    col_dia1, col_dia2, col_dia3 = st.columns([2, 2, 1])
-    
-    with col_dia1:
+    with col_cal1:
         st.markdown(f"**{año_base}**")
-        fecha_base_seleccionada = st.date_input(
+        fechas_base = sorted(datos_base["fecha"].dt.date.unique())
+        fecha_base = st.date_input(
             "Selecciona fecha",
-            value=min_fecha_base,
-            min_value=min_fecha_base,
-            max_value=max_fecha_base,
-            key="fecha_base_calendario",
+            value=fechas_base[0],
+            min_value=min(fechas_base),
+            max_value=max(fechas_base),
+            key="fecha_base",
             format="DD/MM/YYYY"
         )
     
-    with col_dia2:
+    with col_cal2:
         st.markdown(f"**{año_comparar}**")
-        fecha_comparar_seleccionada = st.date_input(
+        fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
+        fecha_comp = st.date_input(
             "Selecciona fecha",
-            value=min_fecha_comparar,
-            min_value=min_fecha_comparar,
-            max_value=max_fecha_comparar,
-            key="fecha_comparar_calendario",
+            value=fechas_comp[0],
+            min_value=min(fechas_comp),
+            max_value=max(fechas_comp),
+            key="fecha_comp",
             format="DD/MM/YYYY"
         )
     
-    with col_dia3:
-        st.write("")
-        st.write("")
-        buscar_btn = st.button("🔍 Buscar mismo día", use_container_width=True)
-    
-    # Botón para buscar fechas similares (mismo mes y día)
-    if buscar_btn:
-        # Crear un diccionario con fechas del año comparar agrupadas por mes-día
-        fechas_comparar_por_mes_dia = {}
-        for fecha in fechas_comparar:
-            clave = (fecha.month, fecha.day)
-            if clave not in fechas_comparar_por_mes_dia:
-                fechas_comparar_por_mes_dia[clave] = fecha
-        
-        # Buscar la fecha en año base que tenga mismo mes/día en año comparar
-        fecha_encontrada = None
-        for fecha_b in sorted(fechas_base):
-            clave = (fecha_b.month, fecha_b.day)
-            if clave in fechas_comparar_por_mes_dia:
-                fecha_encontrada = fecha_b
-                fecha_comparar_encontrada = fechas_comparar_por_mes_dia[clave]
-                break
-        
-        if fecha_encontrada:
-            fecha_base_seleccionada = fecha_encontrada
-            fecha_comparar_seleccionada = fecha_comparar_encontrada
-            # Crear mensaje con nombres de mes en español
-            meses_es = {
-                1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
-                7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
-            }
-            st.success(f"✓ Encontrado: {fecha_encontrada.day} de {meses_es[fecha_encontrada.month]} en ambos años")
-        else:
-            st.warning("No se encontró el mismo mes/día en ambos años")
-    
-    # Validar que las fechas seleccionadas existen en los datos
-    fecha_base_valida = fecha_base_seleccionada in fechas_base
-    fecha_comparar_valida = fecha_comparar_seleccionada in fechas_comparar
-    
-    if not fecha_base_valida:
-        st.warning(f"⚠️ No hay datos para el {fecha_base_seleccionada.strftime('%d/%m/%Y')} en {año_base}")
-    
-    if not fecha_comparar_valida:
-        st.warning(f"⚠️ No hay datos para el {fecha_comparar_seleccionada.strftime('%d/%m/%Y')} en {año_comparar}")
-    
-    if fecha_base_valida and fecha_comparar_valida:
-        # Obtener datos para las fechas seleccionadas
-        datos_dia_base = df_filtrado[
-            (df_filtrado["anio"] == año_base) & 
-            (df_filtrado["fecha"].dt.date == fecha_base_seleccionada)
-        ]
-        
-        datos_dia_comparar = df_filtrado[
-            (df_filtrado["anio"] == año_comparar) & 
-            (df_filtrado["fecha"].dt.date == fecha_comparar_seleccionada)
-        ]
-        
-        # Calcular totales por día
-        total_base = {
-            "venta": datos_dia_base["venta"].sum(),
-            "entradas": datos_dia_base["entradas"].sum(),
-            "tickets": datos_dia_base["tickets"].sum(),
-            "articulos": datos_dia_base["articulos"].sum()
-        }
-        
-        total_comparar = {
-            "venta": datos_dia_comparar["venta"].sum(),
-            "entradas": datos_dia_comparar["entradas"].sum(),
-            "tickets": datos_dia_comparar["tickets"].sum(),
-            "articulos": datos_dia_comparar["articulos"].sum()
-        }
-        
-        # Calcular ticket promedio diario
-        ticket_prom_base = total_base["venta"] / total_base["tickets"] if total_base["tickets"] > 0 else 0
-        ticket_prom_comparar = total_comparar["venta"] / total_comparar["tickets"] if total_comparar["tickets"] > 0 else 0
-        
-        # Mostrar comparación día a día
-        st.write("---")
-        
-        # Formatear fechas para mostrar
-        meses_es = {
-            1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
-            7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
-        }
-        
-        fecha_base_str = f"{fecha_base_seleccionada.day} de {meses_es[fecha_base_seleccionada.month]} de {año_base}"
-        fecha_comparar_str = f"{fecha_comparar_seleccionada.day} de {meses_es[fecha_comparar_seleccionada.month]} de {año_comparar}"
-        
-        st.subheader(f"Comparación: {fecha_base_str} vs {fecha_comparar_str}")
-        
-        col_dia_metric1, col_dia_metric2, col_dia_metric3, col_dia_metric4 = st.columns(4)
-        
-        with col_dia_metric1:
-            delta_ventas_dia = ((total_comparar['venta'] - total_base['venta'])/total_base['venta']*100) if total_base['venta'] > 0 else None
-            st.metric(
-                f"Ventas {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
-                f"${total_comparar['venta']:,.0f}",
-                delta=f"{delta_ventas_dia:.1f}%" if delta_ventas_dia is not None else "Sin datos",
-                delta_color="normal" if delta_ventas_dia is not None else "off"
-            )
-            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: ${total_base['venta']:,.0f}")
-        
-        with col_dia_metric2:
-            delta_entradas_dia = ((total_comparar['entradas'] - total_base['entradas'])/total_base['entradas']*100) if total_base['entradas'] > 0 else None
-            st.metric(
-                f"Entradas {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
-                f"{total_comparar['entradas']:,.0f}",
-                delta=f"{delta_entradas_dia:.1f}%" if delta_entradas_dia is not None else "Sin datos",
-                delta_color="normal" if delta_entradas_dia is not None else "off"
-            )
-            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: {total_base['entradas']:,.0f}")
-        
-        with col_dia_metric3:
-            delta_ticket_dia = ((ticket_prom_comparar - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
-            st.metric(
-                f"Ticket Prom. {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
-                f"${ticket_prom_comparar:,.2f}",
-                delta=f"{delta_ticket_dia:.1f}%" if delta_ticket_dia is not None else "Sin datos",
-                delta_color="normal" if delta_ticket_dia is not None else "off"
-            )
-            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: ${ticket_prom_base:,.2f}")
-        
-        with col_dia_metric4:
-            tasa_base_dia = datos_dia_base["tasa_conversion"].mean() if not datos_dia_base.empty else 0
-            tasa_comparar_dia = datos_dia_comparar["tasa_conversion"].mean() if not datos_dia_comparar.empty else 0
-            delta_tasa_dia = tasa_comparar_dia - tasa_base_dia if tasa_base_dia > 0 else None
-            st.metric(
-                f"Tasa Conv. {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
-                f"{tasa_comparar_dia:.2f}%",
-                delta=f"{delta_tasa_dia:.2f} pp" if delta_tasa_dia is not None else "Sin datos",
-                delta_color="normal" if delta_tasa_dia is not None else "off"
-            )
-            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: {tasa_base_dia:.2f}%")
-        
-        # Mostrar desglose por sección para el día seleccionado
-        with st.expander(f"📊 Ver desglose por sección"):
-            # Crear tabla comparativa por sección
-            secciones_dia = sorted(set(datos_dia_base["secciones"].unique()) | set(datos_dia_comparar["secciones"].unique()))
-            
-            data_secciones = []
-            for seccion in secciones_dia:
-                datos_base_sec = datos_dia_base[datos_dia_base["secciones"] == seccion]
-                datos_comparar_sec = datos_dia_comparar[datos_dia_comparar["secciones"] == seccion]
-                
-                # Calcular variación si hay datos en ambos
-                if not datos_base_sec.empty and not datos_comparar_sec.empty:
-                    venta_base = datos_base_sec['venta'].sum()
-                    venta_comparar = datos_comparar_sec['venta'].sum()
-                    variacion = ((venta_comparar - venta_base) / venta_base * 100) if venta_base > 0 else 0
-                    variacion_str = f"{variacion:.1f}%"
+    with col_cal3:
+        st.markdown("**Acción**")
+        if st.button("🔄 Mismo día", use_container_width=True):
+            # Buscar mismo mes/día
+            for f_base in fechas_base:
+                for f_comp in fechas_comp:
+                    if f_base.month == f_comp.month and f_base.day == f_comp.day:
+                        fecha_base = f_base
+                        fecha_comp = f_comp
+                        st.success(f"✓ {f_base.day}/{f_base.month} encontrado")
+                        break
                 else:
-                    variacion_str = "N/A"
-                
-                fila = {
-                    "Sección": seccion,
-                    f"Venta {año_base}": f"${datos_base_sec['venta'].sum():,.0f}" if not datos_base_sec.empty else "Sin datos",
-                    f"Venta {año_comparar}": f"${datos_comparar_sec['venta'].sum():,.0f}" if not datos_comparar_sec.empty else "Sin datos",
-                    "Variación": variacion_str
-                }
-                data_secciones.append(fila)
-            
-            if data_secciones:
-                df_secciones = pd.DataFrame(data_secciones)
-                st.dataframe(df_secciones, use_container_width=True)
-                
-                # Mostrar totales del día
-                st.write("---")
-                st.write("**Totales del día:**")
-                col_total1, col_total2 = st.columns(2)
-                with col_total1:
-                    st.write(f"**{año_base}:** ${total_base['venta']:,.0f} | Entradas: {total_base['entradas']:,.0f}")
-                with col_total2:
-                    st.write(f"**{año_comparar}:** ${total_comparar['venta']:,.0f} | Entradas: {total_comparar['entradas']:,.0f}")
-
-# ---------- ANÁLISIS POR SECCIÓN ----------
-st.subheader(f"📊 Comparación por Sección: {año_base} vs {año_comparar}")
-
-# Agrupar por sección y año
-seccion_comparacion = df_filtrado.groupby(["secciones", "anio"]).agg({
-    "venta": "sum",
-    "entradas": "sum",
-    "tickets": "sum"
-}).reset_index()
-
-# Crear tabla comparativa
-secciones_unicas = seccion_comparacion["secciones"].unique()
-comparacion_secciones = []
-
-for seccion in secciones_unicas:
-    datos_seccion = seccion_comparacion[seccion_comparacion["secciones"] == seccion]
-    dato_base = datos_seccion[datos_seccion["anio"] == año_base]
-    dato_comparar = datos_seccion[datos_seccion["anio"] == año_comparar]
+                    continue
+                break
     
-    if not dato_base.empty and not dato_comparar.empty:
-        venta_base = dato_base["venta"].values[0]
-        venta_comparar = dato_comparar["venta"].values[0]
-        variacion = ((venta_comparar - venta_base) / venta_base * 100) if venta_base > 0 else 0
+    # Mostrar comparación del día
+    if fecha_base and fecha_comp:
+        datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
+        datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
         
-        comparacion_secciones.append({
-            "Sección": seccion,
-            f"Venta {año_base}": f"${venta_base:,.0f}",
-            f"Venta {año_comparar}": f"${venta_comparar:,.0f}",
-            "Variación %": f"{variacion:.1f}%"
-        })
-
-if comparacion_secciones:
-    st.dataframe(pd.DataFrame(comparacion_secciones), use_container_width=True)
-else:
-    st.info(f"No hay datos completos para ambos años en ninguna sección. Años disponibles: {', '.join(map(str, años_disponibles))}")
-
-# ---------- GRÁFICOS ----------
-st.subheader("📈 Evolución Temporal")
-
-try:
-    # Filtrar solo los años seleccionados para el gráfico
-    df_grafico = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
-    
-    if not df_grafico.empty:
-        # Crear columna de mes para agrupar
-        df_grafico['mes'] = df_grafico['fecha'].dt.month
-        df_grafico['mes_nombre'] = df_grafico['fecha'].dt.strftime('%b')
-        
-        # Agrupar por mes y año
-        df_evolucion_mensual = df_grafico.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
-        
-        if not df_evolucion_mensual.empty:
-            # Crear tabla pivote
-            pivot_ventas = df_evolucion_mensual.pivot(index='mes_nombre', columns='anio', values='venta').fillna(0)
-            # Ordenar los meses
-            orden_meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-            pivot_ventas = pivot_ventas.reindex(orden_meses)
+        if not datos_dia_base.empty and not datos_dia_comp.empty:
+            # Tarjetas de comparación diaria
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
             
-            st.line_chart(pivot_ventas)
-            st.caption("Evolución mensual de ventas. Cada línea representa un año.")
-        else:
-            st.info("No hay datos suficientes para generar el gráfico mensual")
-    else:
-        st.info("No hay datos suficientes para generar el gráfico")
-        
-except Exception as e:
-    st.warning(f"No se puede generar el gráfico: {e}")
+            venta_base = datos_dia_base["venta"].sum()
+            venta_comp = datos_dia_comp["venta"].sum()
+            delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
+            
+            with col_d1:
+                st.markdown(f"""
+                <div class="metric-card" style="padding: 1rem;">
+                    <h4 style="color: #666; margin: 0;">Ventas del día</h4>
+                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">${venta_comp:,.0f}</h3>
+                    <p style="color: {'#4caf50' if delta_venta and delta_venta > 0 else '#f44336' if delta_venta and delta_venta < 0 else '#666'};">
+                        {f'▲ {delta_venta:.1f}%' if delta_venta and delta_venta > 0 else f'▼ {abs(delta_venta):.1f}%' if delta_venta and delta_venta < 0 else '0%'}
+                    </p>
+                    <p style="color: #999; font-size: 0.8rem;">{año_base}: ${venta_base:,.0f}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Más métricas del día...
+            with col_d2:
+                entradas_base = datos_dia_base["entradas"].sum()
+                entradas_comp = datos_dia_comp["entradas"].sum()
+                delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+                
+                st.markdown(f"""
+                <div class="metric-card" style="padding: 1rem;">
+                    <h4 style="color: #666; margin: 0;">Entradas del día</h4>
+                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">{entradas_comp:,.0f}</h3>
+                    <p style="color: {'#4caf50' if delta_ent and delta_ent > 0 else '#f44336' if delta_ent and delta_ent < 0 else '#666'};">
+                        {f'▲ {delta_ent:.1f}%' if delta_ent and delta_ent > 0 else f'▼ {abs(delta_ent):.1f}%' if delta_ent and delta_ent < 0 else '0%'}
+                    </p>
+                    <p style="color: #999; font-size: 0.8rem;">{año_base}: {entradas_base:,.0f}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_d3:
+                ticket_base = venta_base / datos_dia_base["tickets"].sum() if datos_dia_base["tickets"].sum() > 0 else 0
+                ticket_comp = venta_comp / datos_dia_comp["tickets"].sum() if datos_dia_comp["tickets"].sum() > 0 else 0
+                delta_ticket = ((ticket_comp - ticket_base)/ticket_base*100) if ticket_base > 0 else None
+                
+                st.markdown(f"""
+                <div class="metric-card" style="padding: 1rem;">
+                    <h4 style="color: #666; margin: 0;">Ticket Promedio</h4>
+                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">${ticket_comp:,.2f}</h3>
+                    <p style="color: {'#4caf50' if delta_ticket and delta_ticket > 0 else '#f44336' if delta_ticket and delta_ticket < 0 else '#666'};">
+                        {f'▲ {delta_ticket:.1f}%' if delta_ticket and delta_ticket > 0 else f'▼ {abs(delta_ticket):.1f}%' if delta_ticket and delta_ticket < 0 else '0%'}
+                    </p>
+                    <p style="color: #999; font-size: 0.8rem;">{año_base}: ${ticket_base:,.2f}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_d4:
+                tasa_base = datos_dia_base["tasa_conversion"].mean()
+                tasa_comp = datos_dia_comp["tasa_conversion"].mean()
+                delta_tasa = tasa_comp - tasa_base
+                
+                st.markdown(f"""
+                <div class="metric-card" style="padding: 1rem;">
+                    <h4 style="color: #666; margin: 0;">Tasa Conversión</h4>
+                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">{tasa_comp:.2f}%</h3>
+                    <p style="color: {'#4caf50' if delta_tasa > 0 else '#f44336' if delta_tasa < 0 else '#666'};">
+                        {f'▲ {delta_tasa:.2f} pp' if delta_tasa > 0 else f'▼ {abs(delta_tasa):.2f} pp' if delta_tasa < 0 else '0 pp'}
+                    </p>
+                    <p style="color: #999; font-size: 0.8rem;">{año_base}: {tasa_base:.2f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Desglose por sección del día
+            with st.expander("📋 Ver desglose por sección del día"):
+                secciones_dia = sorted(set(datos_dia_base["secciones"].unique()) | 
+                                     set(datos_dia_comp["secciones"].unique()))
+                
+                data_dia = []
+                for sec in secciones_dia:
+                    base_sec = datos_dia_base[datos_dia_base["secciones"] == sec]
+                    comp_sec = datos_dia_comp[datos_dia_comp["secciones"] == sec]
+                    
+                    venta_b = base_sec["venta"].sum() if not base_sec.empty else 0
+                    venta_c = comp_sec["venta"].sum() if not comp_sec.empty else 0
+                    
+                    data_dia.append({
+                        "Sección": sec,
+                        f"Venta {año_base}": f"${venta_b:,.0f}" if venta_b > 0 else "Sin datos",
+                        f"Venta {año_comparar}": f"${venta_c:,.0f}" if venta_c > 0 else "Sin datos",
+                        "Variación": f"{((venta_c - venta_b)/venta_b*100):.1f}%" if venta_b > 0 and venta_c > 0 else "N/A"
+                    })
+                
+                st.dataframe(pd.DataFrame(data_dia), use_container_width=True)
 
 # ---------- DATOS DETALLADOS ----------
-with st.expander("📋 Ver datos detallados"):
-    # Mostrar estadísticas por año
-    st.subheader("Resumen por año")
-    resumen_anual = df_filtrado.groupby("anio").agg({
-        "venta": "sum",
-        "entradas": "sum",
-        "tickets": "sum",
-        "tasa_conversion": "mean"
-    }).round(2)
+with st.expander("📋 Ver datos detallados", expanded=False):
+    tab1, tab2 = st.tabs(["Resumen Anual", "Registros Detallados"])
     
-    resumen_anual.columns = ["Ventas Totales", "Entradas Totales", "Tickets Totales", "Tasa Conv. Promedio"]
-    resumen_anual["Ventas Totales"] = resumen_anual["Ventas Totales"].apply(lambda x: f"${x:,.0f}")
-    resumen_anual["Entradas Totales"] = resumen_anual["Entradas Totales"].apply(lambda x: f"{x:,.0f}")
-    resumen_anual["Tickets Totales"] = resumen_anual["Tickets Totales"].apply(lambda x: f"{x:,.0f}")
-    resumen_anual["Tasa Conv. Promedio"] = resumen_anual["Tasa Conv. Promedio"].apply(lambda x: f"{x:.2f}%")
+    with tab1:
+        resumen = df_filtrado.groupby("anio").agg({
+            "venta": "sum",
+            "entradas": "sum",
+            "tickets": "sum",
+            "tasa_conversion": "mean"
+        }).round(2)
+        
+        resumen.columns = ["Ventas Totales", "Entradas Totales", "Tickets Totales", "Tasa Conv. Prom."]
+        resumen["Ventas Totales"] = resumen["Ventas Totales"].apply(lambda x: f"${x:,.0f}")
+        resumen["Entradas Totales"] = resumen["Entradas Totales"].apply(lambda x: f"{x:,.0f}")
+        resumen["Tickets Totales"] = resumen["Tickets Totales"].apply(lambda x: f"{x:,.0f}")
+        resumen["Tasa Conv. Prom."] = resumen["Tasa Conv. Prom."].apply(lambda x: f"{x:.2f}%")
+        
+        st.dataframe(resumen, use_container_width=True)
     
-    st.dataframe(resumen_anual, use_container_width=True)
-    
-    # Datos detallados
-    st.subheader("Registros detallados")
-    st.dataframe(
-        df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False])
-        .style.format({
-            "venta": "${:,.0f}",
-            "ticket_promedio": "${:,.2f}",
-            "tasa_conversion": "{:.2f}%"
-        })
-    )
+    with tab2:
+        st.dataframe(
+            df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False])
+            .style.format({
+                "venta": "${:,.0f}",
+                "ticket_promedio": "${:,.2f}",
+                "tasa_conversion": "{:.2f}%"
+            }),
+            use_container_width=True
+        )
 
-# ---------- OPCIÓN PARA REINICIAR BASE DE DATOS ----------
-with st.expander("⚠️ Administración"):
-    col1, col2 = st.columns(2)
+# ---------- ADMINISTRACIÓN ----------
+with st.expander("⚙️ Administración", expanded=False):
+    col_admin1, col_admin2 = st.columns(2)
     
-    with col1:
-        if st.button("Borrar todos los datos"):
+    with col_admin1:
+        if st.button("🗑️ Borrar todos los datos", use_container_width=True):
             conn = conectar()
             if conn is not None:
                 try:
@@ -706,13 +730,13 @@ with st.expander("⚠️ Administración"):
                     st.warning("Base de datos limpiada")
                     st.rerun()
                 except sqlite3.Error as e:
-                    st.error(f"Error al borrar datos: {e}")
+                    st.error(f"Error: {e}")
                 finally:
                     conn.close()
     
-    with col2:
-        if st.button("🔄 Reiniciar estructura de BD"):
+    with col_admin2:
+        if st.button("🔄 Reiniciar estructura", use_container_width=True):
             eliminar_tabla_existente()
             crear_tabla()
-            st.success("Estructura de base de datos reiniciada")
+            st.success("Estructura reiniciada")
             st.rerun()
