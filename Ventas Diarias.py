@@ -180,53 +180,83 @@ if año_base == año_comparar and len(años_disponibles) > 1:
 # ---------- FILTROS ADICIONALES ----------
 st.sidebar.header("Filtros")
 
-# Convertir fecha a datetime para filtros
+# Asegurar que la columna fecha sea datetime
 df["fecha"] = pd.to_datetime(df["fecha"])
 
-# Filtro de rango de fechas
-fecha_min = df["fecha"].min().date()
-fecha_max = df["fecha"].max().date()
+# Verificar que hay fechas válidas
+if df.empty or df["fecha"].isna().all():
+    st.warning("No hay datos con fechas válidas para filtrar")
+    st.stop()
 
-# Manejar el caso cuando solo hay una fecha disponible
-if fecha_min == fecha_max:
-    # Si solo hay una fecha, usar un selector de fecha simple
+# Obtener fechas mínima y máxima
+fecha_min = df["fecha"].min()
+fecha_max = df["fecha"].max()
+
+# Crear columnas auxiliares para filtrado (como string para evitar problemas de tipos)
+df["fecha_str"] = df["fecha"].dt.strftime("%Y-%m-%d")
+
+# Filtro de rango de fechas en el sidebar
+st.sidebar.write("Seleccionar rango de fechas:")
+
+if fecha_min.date() == fecha_max.date():
+    # Si solo hay una fecha
     fecha_seleccionada = st.sidebar.date_input(
         "Fecha",
-        value=fecha_min,
-        min_value=fecha_min,
-        max_value=fecha_max
+        value=fecha_min.date(),
+        min_value=fecha_min.date(),
+        max_value=fecha_max.date(),
+        key="fecha_unica"
     )
-    fecha_inicio = fecha_seleccionada
-    fecha_fin = fecha_seleccionada
+    fecha_inicio = pd.Timestamp(fecha_seleccionada)
+    fecha_fin = pd.Timestamp(fecha_seleccionada)
 else:
-    # Si hay múltiples fechas, usar el selector de rango
-    fechas_seleccionadas = st.sidebar.date_input(
-        "Rango de fechas",
-        value=(fecha_min, fecha_max),
-        min_value=fecha_min,
-        max_value=fecha_max
-    )
+    # Si hay múltiples fechas
+    fecha_inicio_widget, fecha_fin_widget = st.sidebar.columns(2)
     
-    # Verificar si se seleccionó un rango válido
-    if isinstance(fechas_seleccionadas, tuple) and len(fechas_seleccionadas) == 2:
-        fecha_inicio, fecha_fin = fechas_seleccionadas
-    else:
-        # Si por alguna razón no es una tupla, usar la fecha mínima para ambos
-        fecha_inicio = fecha_fin = fechas_seleccionadas
+    with fecha_inicio_widget:
+        fecha_inicio_sel = st.date_input(
+            "Fecha inicial",
+            value=fecha_min.date(),
+            min_value=fecha_min.date(),
+            max_value=fecha_max.date(),
+            key="fecha_inicio"
+        )
+    
+    with fecha_fin_widget:
+        fecha_fin_sel = st.date_input(
+            "Fecha final",
+            value=fecha_max.date(),
+            min_value=fecha_min.date(),
+            max_value=fecha_max.date(),
+            key="fecha_fin"
+        )
+    
+    fecha_inicio = pd.Timestamp(fecha_inicio_sel)
+    fecha_fin = pd.Timestamp(fecha_fin_sel)
+    
+    # Validar que fecha_inicio <= fecha_fin
+    if fecha_inicio > fecha_fin:
+        st.sidebar.error("La fecha inicial debe ser menor o igual a la fecha final")
+        fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
+
 # Filtro de secciones
-secciones = df["secciones"].unique()
+secciones = sorted(df["secciones"].unique())
 secciones_seleccionadas = st.sidebar.multiselect(
     "Secciones",
     options=secciones,
-    default=secciones
+    default=secciones,
+    key="secciones_filter"
 )
 
-# Aplicar filtros
+# Aplicar filtros usando comparación directa con Timestamps
 df_filtrado = df[
-    (df["fecha"].dt.date >= fecha_inicio) &
-    (df["fecha"].dt.date <= fecha_fin) &
+    (df["fecha"] >= fecha_inicio) &
+    (df["fecha"] <= fecha_fin) &
     (df["secciones"].isin(secciones_seleccionadas))
 ]
+
+# Mostrar información de los filtros aplicados
+st.sidebar.info(f"Mostrando {len(df_filtrado)} registros de {len(df)} totales")
 
 # ---------- KPIS GENERALES ----------
 st.subheader(f"📈 Comparación: {año_base} vs {año_comparar}")
