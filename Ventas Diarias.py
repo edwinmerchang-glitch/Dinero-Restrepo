@@ -320,18 +320,30 @@ st.subheader("📈 Evolución Temporal")
 
 try:
     # Filtrar solo los años seleccionados para el gráfico
-    df_grafico = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])]
-    
-    # Preparar datos para gráficos
-    df_evolucion = df_grafico.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
-    
-    if not df_evolucion.empty:
-        # Gráfico de líneas para ventas
-        pivot_ventas = df_evolucion.pivot(index="fecha", columns="anio", values="venta").fillna(0)
-        st.line_chart(pivot_ventas)
+    df_grafico = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
+
+    if not df_grafico.empty:
+        # Crear una columna de Mes (como string o número) para mejor visualización
+        df_grafico['mes'] = df_grafico['fecha'].dt.month
+        df_grafico['mes_nombre'] = df_grafico['fecha'].dt.strftime('%b') # 'Ene', 'Feb', etc.
+
+        # Preparar datos para gráficos: Agrupar por MES y AÑO
+        df_evolucion_mensual = df_grafico.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
+
+        if not df_evolucion_mensual.empty:
+            # Crear una tabla pivote: Filas = Mes, Columnas = Año, Valores = Ventas
+            pivot_ventas = df_evolucion_mensual.pivot(index='mes_nombre', columns='anio', values='venta').fillna(0)
+            # Ordenar los meses correctamente
+            orden_meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            pivot_ventas = pivot_ventas.reindex(orden_meses)
+
+            st.line_chart(pivot_ventas)
+            st.caption("Evolución mensual de ventas. Cada línea representa un año.")
+        else:
+            st.info("No hay datos suficientes para generar el gráfico mensual")
     else:
         st.info("No hay datos suficientes para generar el gráfico")
-        
+
 except Exception as e:
     st.warning(f"No se puede generar el gráfico: {e}")
 
