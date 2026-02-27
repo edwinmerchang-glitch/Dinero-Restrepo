@@ -376,34 +376,26 @@ st.markdown("""
             </div>
             <div style='text-align: right;'>
                 <div style='color: rgba(255,255,255,0.6); font-size: 0.9rem;'>Última actualización</div>
-                <div style='color: white; font-size: 1.2rem; font-weight: 600;' id="fecha-actual"></div>
+                <div style='color: white; font-size: 1.2rem; font-weight: 600;'>{}</div>
             </div>
         </div>
     </div>
-    
-    <script>
-        // Actualizar fecha en el cliente
-        const fecha = new Date();
-        const opciones = { year: 'numeric', month: 'long', day: 'numeric' };
-        document.getElementById('fecha-actual').textContent = fecha.toLocaleDateString('es-ES', opciones);
-    </script>
-""", unsafe_allow_html=True)
+""".format(datetime.now().strftime("%d de %B, %Y")), unsafe_allow_html=True)
 
-# ---------- CARGA DE DATOS ----------
+# ---------- CARGA DE DATOS (CORREGIDO) ----------
 with st.expander("📤 **Cargar Nuevos Datos**", expanded=False):
     col1, col2 = st.columns([2, 1])
     
     with col1:
         archivo = st.file_uploader(
-            "",
+            "Selecciona un archivo Excel",  # Label no vacío
             type=["xlsx"],
-            help="Formatos soportados: .xlsx",
-            label_visibility="collapsed"
+            help="Formatos soportados: .xlsx"
         )
     
     with col2:
         anio = st.number_input(
-            "📅 Año",
+            "📅 Año de los datos",
             min_value=2000,
             max_value=2100,
             value=datetime.now().year,
@@ -414,7 +406,7 @@ with st.expander("📤 **Cargar Nuevos Datos**", expanded=False):
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             if st.button("🚀 Procesar y Guardar", use_container_width=True):
-                with st.spinner("🔄 Procesando..."):
+                with st.spinner("🔄 Procesando datos..."):
                     try:
                         df = pd.read_excel(archivo)
                         
@@ -442,16 +434,21 @@ with st.expander("📤 **Cargar Nuevos Datos**", expanded=False):
                             df["anio"] = anio
                             df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
                             
+                            # Convertir tipos de datos
+                            for col in ["entradas", "venta", "tickets", "articulos", 
+                                       "ticket_promedio", "articulos_por_ticket", "tasa_conversion"]:
+                                df[col] = pd.to_numeric(df[col], errors='coerce')
+                            
                             conn = conectar()
                             if conn is not None:
                                 df.to_sql("ventas", conn, if_exists="append", index=False)
                                 conn.close()
                                 
                                 st.balloons()
-                                st.success(f"✅ {len(df)} registros para {anio}")
+                                st.success(f"✅ ¡{len(df)} registros cargados exitosamente para {anio}!")
                                 
                     except Exception as e:
-                        st.error(f"❌ Error: {e}")
+                        st.error(f"❌ Error al procesar: {str(e)}")
 
 # ---------- CARGA DE DATOS ----------
 def cargar_datos():
@@ -472,7 +469,8 @@ df = cargar_datos()
 if df.empty:
     st.markdown("""
         <div style='text-align: center; padding: 4rem; background: rgba(255,255,255,0.03); border-radius: 24px; margin: 2rem; border: 1px solid rgba(255,255,255,0.05);'>
-            <h2 style='color: white; margin-bottom: 1rem;'>👋 ¡Bienvenido a VentasPro!</h2>
+            <div style='font-size: 4rem; margin-bottom: 1rem;'>📊</div>
+            <h2 style='color: white; margin-bottom: 1rem;'>¡Bienvenido a VentasPro!</h2>
             <p style='color: rgba(255,255,255,0.6); font-size: 1.1rem; margin-bottom: 2rem;'>
                 Comienza cargando tus datos de ventas usando el panel superior
             </p>
@@ -495,19 +493,25 @@ with st.sidebar:
     
     años_disponibles = sorted(df["anio"].unique(), reverse=True)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        año_base = st.selectbox(
-            "Año base",
-            options=años_disponibles,
-            index=min(1, len(años_disponibles)-1) if len(años_disponibles) > 1 else 0
-        )
-    with col2:
-        año_comparar = st.selectbox(
-            "Año actual",
-            options=años_disponibles,
-            index=0
-        )
+    if len(años_disponibles) > 0:
+        col1, col2 = st.columns(2)
+        with col1:
+            año_base = st.selectbox(
+                "Año base",
+                options=años_disponibles,
+                index=min(1, len(años_disponibles)-1) if len(años_disponibles) > 1 else 0,
+                key="anio_base"
+            )
+        with col2:
+            año_comparar = st.selectbox(
+                "Año actual",
+                options=años_disponibles,
+                index=0,
+                key="anio_comparar"
+            )
+    else:
+        st.warning("No hay años disponibles")
+        st.stop()
     
     st.markdown("<div class='sidebar-title'>🔍 Filtros Inteligentes</div>", unsafe_allow_html=True)
     
@@ -517,15 +521,16 @@ with st.sidebar:
     
     col1, col2 = st.columns(2)
     with col1:
-        fecha_inicio = st.date_input("Desde", fecha_min)
+        fecha_inicio = st.date_input("Desde", fecha_min, key="fecha_inicio")
     with col2:
-        fecha_fin = st.date_input("Hasta", fecha_max)
+        fecha_fin = st.date_input("Hasta", fecha_max, key="fecha_fin")
     
     secciones = df["secciones"].unique()
     secciones_seleccionadas = st.multiselect(
         "Secciones",
         options=secciones,
-        default=secciones[:3] if len(secciones) > 3 else secciones
+        default=secciones[:3] if len(secciones) > 3 else secciones,
+        key="secciones_filtro"
     )
     
     st.markdown("<div class='sidebar-title'>📊 Resumen Rápido</div>", unsafe_allow_html=True)
@@ -644,15 +649,41 @@ with tab1:
     
     with col1:
         df_grafico = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])]
-        df_evolucion = df_grafico.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
-        
+        if not df_grafico.empty:
+            df_evolucion = df_grafico.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
+            
+            if not df_evolucion.empty:
+                fig = px.line(
+                    df_evolucion, 
+                    x="fecha", 
+                    y="venta", 
+                    color="anio",
+                    title=f"Evolución de Ventas",
+                    color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+                )
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='white',
+                    title_font_color='white',
+                    xaxis_title="",
+                    yaxis_title="Ventas ($)",
+                    legend_title="Año",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos suficientes para el gráfico")
+    
+    with col2:
         if not df_evolucion.empty:
-            fig = px.line(
-                df_evolucion, 
-                x="fecha", 
-                y="venta", 
+            fig = px.bar(
+                df_evolucion,
+                x="fecha",
+                y="venta",
                 color="anio",
-                title=f"Evolución de Ventas",
+                title="Comparativa Mensual",
+                barmode='group',
                 color_discrete_sequence=['#FF6B6B', '#4ECDC4']
             )
             fig.update_layout(
@@ -662,31 +693,9 @@ with tab1:
                 title_font_color='white',
                 xaxis_title="",
                 yaxis_title="Ventas ($)",
-                legend_title="Año",
-                hovermode='x unified'
+                legend_title="Año"
             )
             st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        fig = px.bar(
-            df_evolucion,
-            x="fecha",
-            y="venta",
-            color="anio",
-            title="Comparativa Mensual",
-            barmode='group',
-            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
-        )
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font_color='white',
-            title_font_color='white',
-            xaxis_title="",
-            yaxis_title="Ventas ($)",
-            legend_title="Año"
-        )
-        st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
     seccion_actual = df_filtrado[df_filtrado["anio"] == año_comparar].groupby("secciones")["venta"].sum().reset_index()
@@ -727,8 +736,8 @@ with tab2:
                     
                     comparacion_secciones.append({
                         "Sección": seccion,
-                        año_base: f"${venta_base:,.0f}",
-                        año_comparar: f"${venta_comparar:,.0f}",
+                        str(año_base): f"${venta_base:,.0f}",
+                        str(año_comparar): f"${venta_comparar:,.0f}",
                         "Variación": f"{variacion:+.1f}%"
                     })
             
@@ -740,28 +749,61 @@ with tab2:
                 )
 
 with tab3:
-    df_detalle = df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False]).copy()
-    df_detalle["Venta"] = df_detalle["venta"].apply(lambda x: f"${x:,.0f}")
-    df_detalle["Ticket Prom."] = df_detalle["ticket_promedio"].apply(lambda x: f"${x:,.2f}")
-    df_detalle["Tasa Conv."] = df_detalle["tasa_conversion"].apply(lambda x: f"{x:.2f}%")
+    if not df_filtrado.empty:
+        df_detalle = df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False]).copy()
+        df_detalle["Venta"] = df_detalle["venta"].apply(lambda x: f"${x:,.0f}")
+        df_detalle["Ticket Prom."] = df_detalle["ticket_promedio"].apply(lambda x: f"${x:,.2f}")
+        df_detalle["Tasa Conv."] = df_detalle["tasa_conversion"].apply(lambda x: f"{x:.2f}%")
+        
+        st.dataframe(
+            df_detalle[["fecha", "secciones", "entradas", "Venta", "tickets", 
+                       "articulos", "Ticket Prom.", "Tasa Conv.", "anio"]],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "fecha": "Fecha",
+                "secciones": "Sección",
+                "entradas": "Entradas",
+                "Venta": "Venta",
+                "tickets": "Tickets",
+                "articulos": "Artículos",
+                "Ticket Prom.": "Ticket Prom.",
+                "Tasa Conv.": "Tasa Conv.",
+                "anio": "Año"
+            }
+        )
+
+# ---------- ADMINISTRACIÓN ----------
+with st.expander("⚙️ Administración del Sistema"):
+    col1, col2, col3 = st.columns(3)
     
-    st.dataframe(
-        df_detalle[["fecha", "secciones", "entradas", "Venta", "tickets", 
-                   "articulos", "Ticket Prom.", "Tasa Conv.", "anio"]],
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "fecha": "Fecha",
-            "secciones": "Sección",
-            "entradas": "Entradas",
-            "Venta": "Venta",
-            "tickets": "Tickets",
-            "articulos": "Artículos",
-            "Ticket Prom.": "Ticket Prom.",
-            "Tasa Conv.": "Tasa Conv.",
-            "anio": "Año"
-        }
-    )
+    with col1:
+        if st.button("🗑️ Limpiar Todos los Datos", use_container_width=True):
+            conn = conectar()
+            if conn is not None:
+                conn.execute("DELETE FROM ventas")
+                conn.commit()
+                conn.close()
+                st.warning("✅ Datos eliminados")
+                st.rerun()
+    
+    with col2:
+        if st.button("🔄 Reiniciar Base de Datos", use_container_width=True):
+            conn = conectar()
+            if conn is not None:
+                conn.execute("DROP TABLE IF EXISTS ventas")
+                conn.commit()
+                conn.close()
+                crear_tabla()
+                st.success("✅ Base de datos reiniciada")
+                st.rerun()
+    
+    with col3:
+        st.markdown("""
+            <div style='text-align: center;'>
+                <span class='modern-badge badge-purple'>✨ Versión 2.0</span>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ---------- FOOTER ----------
 st.markdown("""
