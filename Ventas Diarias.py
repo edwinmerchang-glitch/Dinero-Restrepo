@@ -59,7 +59,7 @@ st.title("📊 Comparador de Ventas Diarias — Año Anterior vs Año Actual")
 
 with st.expander("📤 Cargar Excel"):
     archivo = st.file_uploader("Sube archivo Excel", type=["xlsx"])
-    anio = st.selectbox("Selecciona el año:", [datetime.now().year - 1, datetime.now().year])
+    anio = st.selectbox("Selecciona el año:", [datetime.now().year - 2, datetime.now().year - 1, datetime.now().year])
 
     if archivo and st.button("Guardar datos"):
         try:
