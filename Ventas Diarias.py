@@ -186,13 +186,33 @@ df["fecha"] = pd.to_datetime(df["fecha"])
 # Filtro de rango de fechas
 fecha_min = df["fecha"].min().date()
 fecha_max = df["fecha"].max().date()
-fecha_inicio, fecha_fin = st.sidebar.date_input(
-    "Rango de fechas",
-    value=(fecha_min, fecha_max),
-    min_value=fecha_min,
-    max_value=fecha_max
-)
 
+# Manejar el caso cuando solo hay una fecha disponible
+if fecha_min == fecha_max:
+    # Si solo hay una fecha, usar un selector de fecha simple
+    fecha_seleccionada = st.sidebar.date_input(
+        "Fecha",
+        value=fecha_min,
+        min_value=fecha_min,
+        max_value=fecha_max
+    )
+    fecha_inicio = fecha_seleccionada
+    fecha_fin = fecha_seleccionada
+else:
+    # Si hay múltiples fechas, usar el selector de rango
+    fechas_seleccionadas = st.sidebar.date_input(
+        "Rango de fechas",
+        value=(fecha_min, fecha_max),
+        min_value=fecha_min,
+        max_value=fecha_max
+    )
+    
+    # Verificar si se seleccionó un rango válido
+    if isinstance(fechas_seleccionadas, tuple) and len(fechas_seleccionadas) == 2:
+        fecha_inicio, fecha_fin = fechas_seleccionadas
+    else:
+        # Si por alguna razón no es una tupla, usar la fecha mínima para ambos
+        fecha_inicio = fecha_fin = fechas_seleccionadas
 # Filtro de secciones
 secciones = df["secciones"].unique()
 secciones_seleccionadas = st.sidebar.multiselect(
