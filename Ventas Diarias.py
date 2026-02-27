@@ -480,13 +480,9 @@ if not datos_base.empty and not datos_comparar.empty:
     
     df_secciones = df_plot.groupby(['secciones', 'anio'])['venta'].sum().reset_index()
     
-    # Calcular variación porcentual para cada sección
-    secciones_unicas = df_secciones['secciones'].unique()
-    colores_secciones = px.colors.qualitative.Set3[:len(secciones_unicas)]
-    
     fig2 = go.Figure()
     
-    for i, año in enumerate([año_base, año_comparar]):
+    for año in [año_base, año_comparar]:
         df_año = df_secciones[df_secciones['anio'] == año]
         color = '#1f77b4' if año == año_base else '#ff7f0e'
         nombre = f"Año {año}"
@@ -542,14 +538,15 @@ if not datos_base.empty and not datos_comparar.empty:
         'tickets': 'sum',
         'entradas': 'sum',
         'ticket_promedio': 'mean',
-        'tasa_conversion': 'mean'
+        'tasa_conversion': 'mean',
+        'venta': 'sum'  # Agregamos venta total para el pie chart
     }).reset_index()
     
     # Crear subplots con 2 gráficos
     fig3 = make_subplots(
         rows=2, cols=2,
         subplot_titles=('Tickets vs Entradas', 'Ticket Promedio', 
-                       'Tasa de Conversión', 'Distribución %'),
+                       'Tasa de Conversión', 'Distribución de Ventas'),
         specs=[
             [{'type': 'bar'}, {'type': 'bar'}],
             [{'type': 'bar'}, {'type': 'pie'}]
@@ -557,31 +554,33 @@ if not datos_base.empty and not datos_comparar.empty:
     )
     
     # Gráfico 1: Tickets vs Entradas
-    for i, año in enumerate([año_base, año_comparar]):
-        df_año = df_eficiencia[df_eficiencia['anio'] == año]
+    for i, fila in df_eficiencia.iterrows():
+        año = int(fila['anio'])
         color = '#1f77b4' if año == año_base else '#ff7f0e'
         
+        # Barra para Tickets
         fig3.add_trace(
             go.Bar(
                 name=f'Tickets {año}',
                 x=[str(año)],
-                y=df_año['tickets'],
+                y=[fila['tickets']],
                 marker_color=color,
-                text=df_año['tickets'].apply(lambda x: f'{x:,.0f}'),
+                text=[f'{fila["tickets"]:,.0f}'],
                 textposition='inside',
                 showlegend=False
             ),
             row=1, col=1
         )
         
+        # Barra para Entradas (superpuesta)
         fig3.add_trace(
             go.Bar(
                 name=f'Entradas {año}',
                 x=[str(año)],
-                y=df_año['entradas'],
+                y=[fila['entradas']],
                 marker_color=color,
                 marker_pattern_shape="/" if año == año_comparar else "",
-                text=df_año['entradas'].apply(lambda x: f'{x:,.0f}'),
+                text=[f'{fila["entradas"]:,.0f}'],
                 textposition='inside',
                 showlegend=False
             ),
@@ -615,11 +614,10 @@ if not datos_base.empty and not datos_comparar.empty:
     )
     
     # Gráfico 4: Distribución de ventas por año (pie chart)
-    ventas_totales = df_eficiencia.set_index('anio')['venta'].to_dict()
     fig3.add_trace(
         go.Pie(
-            labels=[f'Año {año}' for año in [año_base, año_comparar]],
-            values=[ventas_totales[año_base], ventas_totales[año_comparar]],
+            labels=[f'Año {int(año)}' for año in df_eficiencia['anio']],
+            values=df_eficiencia['venta'],
             marker_colors=['#1f77b4', '#ff7f0e'],
             textinfo='label+percent',
             textposition='inside',
@@ -636,16 +634,17 @@ if not datos_base.empty and not datos_comparar.empty:
         title_font=dict(size=18),
         plot_bgcolor='white',
         paper_bgcolor='white',
-        showlegend=False
+        showlegend=False,
+        barmode='group'  # Para que las barras no se superpongan
     )
     
     fig3.update_xaxes(gridcolor='lightgray')
-    fig3.update_yaxes(gridcolor='lightgray', tickformat='$,.0f', row=1, col=2)
+    fig3.update_yaxes(gridcolor='lightgray', tickformat='$,.2f', row=1, col=2)
     fig3.update_yaxes(gridcolor='lightgray', tickformat='.1f', row=2, col=1)
     
     st.plotly_chart(fig3, use_container_width=True)
     
-    # Gráfico 4: Heatmap de rendimiento por mes y sección (nuevo)
+    # Gráfico 4: Heatmap de rendimiento por mes y sección
     st.markdown("### 🔥 Mapa de Calor - Rendimiento por Mes y Sección")
     
     # Seleccionar año para el heatmap
@@ -700,7 +699,7 @@ if not datos_base.empty and not datos_comparar.empty:
         
         st.plotly_chart(fig4, use_container_width=True)
     
-    # Gráfico 5: Tendencia de ticket promedio (nuevo)
+    # Gráfico 5: Tendencia de ticket promedio
     st.markdown("### 📈 Evolución del Ticket Promedio")
     
     df_ticket = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['ticket_promedio'].mean().reset_index()
@@ -726,6 +725,7 @@ if not datos_base.empty and not datos_comparar.empty:
         ))
     
     fig5.update_layout(
+        title='Evolución del Ticket Promedio por Mes',
         xaxis=dict(
             title='Mes',
             tickangle=45,
