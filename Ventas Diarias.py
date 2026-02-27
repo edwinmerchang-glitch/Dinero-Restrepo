@@ -23,8 +23,21 @@ def conectar():
         st.error(f"Error de conexión a la base de datos: {e}")
         return None
 
+def eliminar_tabla_existente():
+    """Elimina la tabla si existe para recrearla con la nueva estructura"""
+    conn = conectar()
+    if conn is not None:
+        try:
+            c = conn.cursor()
+            c.execute("DROP TABLE IF EXISTS ventas")
+            conn.commit()
+        except sqlite3.Error as e:
+            st.error(f"Error al eliminar tabla: {e}")
+        finally:
+            conn.close()
+
 def crear_tabla():
-    """Crea la tabla si no existe"""
+    """Crea la tabla con la nueva estructura"""
     conn = conectar()
     if conn is not None:
         try:
@@ -50,8 +63,11 @@ def crear_tabla():
         finally:
             conn.close()
 
-# Crear tabla al iniciar
-crear_tabla()
+# Verificar y actualizar la estructura de la tabla
+with st.spinner("Verificando estructura de la base de datos..."):
+    # Intentamos eliminar la tabla existente y crear una nueva
+    eliminar_tabla_existente()
+    crear_tabla()
 
 # ---------- CARGA ----------
 
@@ -109,6 +125,7 @@ with st.expander("📤 Cargar Excel"):
                     
         except Exception as e:
             st.error(f"Error al cargar el archivo: {e}")
+            st.info("Si el error persiste, intenta borrar manualmente el archivo 'data/ventas.db' y reinicia la aplicación")
 
 # ---------- CONSULTAS ----------
 
@@ -163,7 +180,7 @@ df_filtrado = df[
     (df["secciones"].isin(secciones_seleccionadas))
 ]
 
-# ---------- KPIs GENERALES ----------
+# ---------- KPIS GENERALES ----------
 st.subheader("📈 Comparación General")
 
 anio_ant = datetime.now().year - 1
@@ -195,31 +212,37 @@ articulos_por_ticket_act = metricas_act["articulos"] / metricas_act["tickets"] i
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
+    delta_ventas = ((metricas_act['venta'] - metricas_ant['venta'])/metricas_ant['venta']*100) if metricas_ant['venta'] > 0 else None
     st.metric(
         "Ventas Totales",
         f"${metricas_act['venta']:,.0f}",
-        delta=f"{(metricas_act['venta'] - metricas_ant['venta'])/metricas_ant['venta']*100:.1f}%" if metricas_ant['venta'] > 0 else None
+        delta=f"{delta_ventas:.1f}%" if delta_ventas is not None else None
     )
 
 with col2:
+    delta_entradas = ((metricas_act['entradas'] - metricas_ant['entradas'])/metricas_ant['entradas']*100) if metricas_ant['entradas'] > 0 else None
     st.metric(
         "Entradas",
         f"{metricas_act['entradas']:,.0f}",
-        delta=f"{(metricas_act['entradas'] - metricas_ant['entradas'])/metricas_ant['entradas']*100:.1f}%" if metricas_ant['entradas'] > 0 else None
+        delta=f"{delta_entradas:.1f}%" if delta_entradas is not None else None
     )
 
 with col3:
+    delta_ticket = ((ticket_prom_act - ticket_prom_ant)/ticket_prom_ant*100) if ticket_prom_ant > 0 else None
     st.metric(
         "Ticket Promedio",
         f"${ticket_prom_act:,.2f}",
-        delta=f"{(ticket_prom_act - ticket_prom_ant)/ticket_prom_ant*100:.1f}%" if ticket_prom_ant > 0 else None
+        delta=f"{delta_ticket:.1f}%" if delta_ticket is not None else None
     )
 
 with col4:
+    tasa_ant = df_filtrado[df_filtrado['anio'] == anio_ant]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == anio_ant].empty else 0
+    tasa_act = df_filtrado[df_filtrado['anio'] == anio_act]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == anio_act].empty else 0
+    delta_tasa = tasa_act - tasa_ant if tasa_ant > 0 else None
     st.metric(
         "Tasa de Conversión",
-        f"{df_filtrado[df_filtrado['anio'] == anio_act]['tasa_conversion'].mean():.2f}%",
-        delta=f"{(df_filtrado[df_filtrado['anio'] == anio_act]['tasa_conversion'].mean() - df_filtrado[df_filtrado['anio'] == anio_ant]['tasa_conversion'].mean()):.2f}%" if not df_filtrado[df_filtrado['anio'] == anio_ant].empty else None
+        f"{tasa_act:.2f}%",
+        delta=f"{delta_tasa:.2f}%" if delta_tasa is not None else None
     )
 
 # ---------- ANÁLISIS POR SECCIÓN ----------
@@ -255,17 +278,21 @@ for seccion in secciones_unicas:
 
 if comparacion_secciones:
     st.dataframe(pd.DataFrame(comparacion_secciones), use_container_width=True)
+else:
+    st.info("No hay datos completos para ambos años en ninguna sección")
 
 # ---------- GRÁFICOS ----------
 st.subheader("📈 Evolución Temporal")
 
-# Preparar datos para gráficos
-df_evolucion = df_filtrado.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
-df_evolucion["mes_año"] = df_evolucion["fecha"].dt.strftime("%Y-%m")
-
-# Gráfico de líneas para ventas
-pivot_ventas = df_evolucion.pivot(index="fecha", columns="anio", values="venta").fillna(0)
-st.line_chart(pivot_ventas)
+try:
+    # Preparar datos para gráficos
+    df_evolucion = df_filtrado.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
+    
+    # Gráfico de líneas para ventas
+    pivot_ventas = df_evolucion.pivot(index="fecha", columns="anio", values="venta").fillna(0)
+    st.line_chart(pivot_ventas)
+except Exception as e:
+    st.warning(f"No se puede generar el gráfico: {e}")
 
 # ---------- DATOS DETALLADOS ----------
 with st.expander("📋 Ver datos detallados"):
@@ -278,17 +305,27 @@ with st.expander("📋 Ver datos detallados"):
         })
     )
 
-# ---------- BORRAR ----------
+# ---------- OPCIÓN PARA REINICIAR BASE DE DATOS ----------
 with st.expander("⚠️ Administración"):
-    if st.button("Borrar todos los datos"):
-        conn = conectar()
-        if conn is not None:
-            try:
-                conn.execute("DELETE FROM ventas")
-                conn.commit()
-                st.warning("Base de datos limpiada")
-                st.rerun()
-            except sqlite3.Error as e:
-                st.error(f"Error al borrar datos: {e}")
-            finally:
-                conn.close()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Borrar todos los datos"):
+            conn = conectar()
+            if conn is not None:
+                try:
+                    conn.execute("DELETE FROM ventas")
+                    conn.commit()
+                    st.warning("Base de datos limpiada")
+                    st.rerun()
+                except sqlite3.Error as e:
+                    st.error(f"Error al borrar datos: {e}")
+                finally:
+                    conn.close()
+    
+    with col2:
+        if st.button("🔄 Reiniciar estructura de BD"):
+            eliminar_tabla_existente()
+            crear_tabla()
+            st.success("Estructura de base de datos reiniciada")
+            st.rerun()
