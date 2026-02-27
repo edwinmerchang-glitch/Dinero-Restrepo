@@ -63,19 +63,20 @@ def crear_tabla():
         finally:
             conn.close()
 
-# Verificar y actualizar la estructura de la tabla
-with st.spinner("Verificando estructura de la base de datos..."):
-    # Intentamos eliminar la tabla existente y crear una nueva
-    eliminar_tabla_existente()
-    crear_tabla()
+# Crear tabla al iniciar
+crear_tabla()
 
 # ---------- CARGA ----------
 
-st.title("📊 Comparador de Ventas Diarias — Año Anterior vs Año Actual")
+st.title("📊 Comparador de Ventas Diarias — Comparación Interanual")
 
 with st.expander("📤 Cargar Excel"):
     archivo = st.file_uploader("Sube archivo Excel", type=["xlsx"])
-    anio = st.selectbox("Selecciona el año:", [datetime.now().year - 2, datetime.now().year - 1, datetime.now().year])
+    anio = st.number_input("Selecciona el año:", 
+                          min_value=2000, 
+                          max_value=2100, 
+                          value=datetime.now().year,
+                          step=1)
 
     if archivo and st.button("Guardar datos"):
         try:
@@ -125,7 +126,6 @@ with st.expander("📤 Cargar Excel"):
                     
         except Exception as e:
             st.error(f"Error al cargar el archivo: {e}")
-            st.info("Si el error persiste, intenta borrar manualmente el archivo 'data/ventas.db' y reinicia la aplicación")
 
 # ---------- CONSULTAS ----------
 
@@ -149,7 +149,35 @@ if df.empty:
     st.warning("Aún no hay datos cargados")
     st.stop()
 
-# ---------- FILTROS ----------
+# ---------- SELECCIÓN DE AÑOS A COMPARAR ----------
+st.sidebar.header("Configuración de Comparación")
+
+# Obtener años disponibles en la base de datos
+años_disponibles = sorted(df["anio"].unique(), reverse=True)
+
+if len(años_disponibles) == 0:
+    st.warning("No hay años disponibles en la base de datos")
+    st.stop()
+
+# Selectores de años
+col_selector1, col_selector2 = st.sidebar.columns(2)
+with col_selector1:
+    año_base = st.selectbox("Año base (anterior)", 
+                           options=años_disponibles,
+                           index=min(1, len(años_disponibles)-1) if len(años_disponibles) > 1 else 0)
+with col_selector2:
+    año_comparar = st.selectbox("Año a comparar (actual)", 
+                               options=años_disponibles,
+                               index=0)
+
+# Verificar que sean años diferentes
+if año_base == año_comparar and len(años_disponibles) > 1:
+    st.sidebar.warning("Selecciona dos años diferentes para comparar")
+    # Ajustar automáticamente
+    if año_comparar == años_disponibles[0]:
+        año_base = años_disponibles[1] if len(años_disponibles) > 1 else año_base
+
+# ---------- FILTROS ADICIONALES ----------
 st.sidebar.header("Filtros")
 
 # Convertir fecha a datetime para filtros
@@ -181,72 +209,78 @@ df_filtrado = df[
 ]
 
 # ---------- KPIS GENERALES ----------
-st.subheader("📈 Comparación General")
-
-anio_ant = datetime.now().year - 1
-anio_act = datetime.now().year
+st.subheader(f"📈 Comparación: {año_base} vs {año_comparar}")
 
 # Calcular métricas por año
-metricas_ant = df_filtrado[df_filtrado["anio"] == anio_ant].agg({
+metricas_base = df_filtrado[df_filtrado["anio"] == año_base].agg({
     "venta": "sum",
     "entradas": "sum",
     "tickets": "sum",
     "articulos": "sum"
 })
 
-metricas_act = df_filtrado[df_filtrado["anio"] == anio_act].agg({
+metricas_comparar = df_filtrado[df_filtrado["anio"] == año_comparar].agg({
     "venta": "sum",
     "entradas": "sum",
     "tickets": "sum",
     "articulos": "sum"
 })
+
+# Verificar si hay datos para ambos años
+if metricas_base["venta"] == 0 or metricas_comparar["venta"] == 0:
+    st.info(f"⚠️ No hay datos completos para ambos años. Años con datos: {', '.join(map(str, años_disponibles))}")
 
 # Calcular ticket promedio y artículos por ticket
-ticket_prom_ant = metricas_ant["venta"] / metricas_ant["tickets"] if metricas_ant["tickets"] > 0 else 0
-ticket_prom_act = metricas_act["venta"] / metricas_act["tickets"] if metricas_act["tickets"] > 0 else 0
-
-articulos_por_ticket_ant = metricas_ant["articulos"] / metricas_ant["tickets"] if metricas_ant["tickets"] > 0 else 0
-articulos_por_ticket_act = metricas_act["articulos"] / metricas_act["tickets"] if metricas_act["tickets"] > 0 else 0
+ticket_prom_base = metricas_base["venta"] / metricas_base["tickets"] if metricas_base["tickets"] > 0 else 0
+ticket_prom_comparar = metricas_comparar["venta"] / metricas_comparar["tickets"] if metricas_comparar["tickets"] > 0 else 0
 
 # Mostrar KPIs
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    delta_ventas = ((metricas_act['venta'] - metricas_ant['venta'])/metricas_ant['venta']*100) if metricas_ant['venta'] > 0 else None
+    delta_ventas = ((metricas_comparar['venta'] - metricas_base['venta'])/metricas_base['venta']*100) if metricas_base['venta'] > 0 else None
     st.metric(
-        "Ventas Totales",
-        f"${metricas_act['venta']:,.0f}",
-        delta=f"{delta_ventas:.1f}%" if delta_ventas is not None else None
+        f"Ventas {año_comparar}",
+        f"${metricas_comparar['venta']:,.0f}",
+        delta=f"{delta_ventas:.1f}% vs {año_base}" if delta_ventas is not None else "Sin datos base",
+        delta_color="normal" if delta_ventas is not None else "off"
     )
+    st.caption(f"{año_base}: ${metricas_base['venta']:,.0f}")
 
 with col2:
-    delta_entradas = ((metricas_act['entradas'] - metricas_ant['entradas'])/metricas_ant['entradas']*100) if metricas_ant['entradas'] > 0 else None
+    delta_entradas = ((metricas_comparar['entradas'] - metricas_base['entradas'])/metricas_base['entradas']*100) if metricas_base['entradas'] > 0 else None
     st.metric(
-        "Entradas",
-        f"{metricas_act['entradas']:,.0f}",
-        delta=f"{delta_entradas:.1f}%" if delta_entradas is not None else None
+        f"Entradas {año_comparar}",
+        f"{metricas_comparar['entradas']:,.0f}",
+        delta=f"{delta_entradas:.1f}% vs {año_base}" if delta_entradas is not None else "Sin datos base",
+        delta_color="normal" if delta_entradas is not None else "off"
     )
+    st.caption(f"{año_base}: {metricas_base['entradas']:,.0f}")
 
 with col3:
-    delta_ticket = ((ticket_prom_act - ticket_prom_ant)/ticket_prom_ant*100) if ticket_prom_ant > 0 else None
+    delta_ticket = ((ticket_prom_comparar - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
     st.metric(
-        "Ticket Promedio",
-        f"${ticket_prom_act:,.2f}",
-        delta=f"{delta_ticket:.1f}%" if delta_ticket is not None else None
+        f"Ticket Prom. {año_comparar}",
+        f"${ticket_prom_comparar:,.2f}",
+        delta=f"{delta_ticket:.1f}% vs {año_base}" if delta_ticket is not None else "Sin datos base",
+        delta_color="normal" if delta_ticket is not None else "off"
     )
+    st.caption(f"{año_base}: ${ticket_prom_base:,.2f}")
 
 with col4:
-    tasa_ant = df_filtrado[df_filtrado['anio'] == anio_ant]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == anio_ant].empty else 0
-    tasa_act = df_filtrado[df_filtrado['anio'] == anio_act]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == anio_act].empty else 0
-    delta_tasa = tasa_act - tasa_ant if tasa_ant > 0 else None
+    tasa_base = df_filtrado[df_filtrado['anio'] == año_base]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == año_base].empty else 0
+    tasa_comparar = df_filtrado[df_filtrado['anio'] == año_comparar]['tasa_conversion'].mean() if not df_filtrado[df_filtrado['anio'] == año_comparar].empty else 0
+    delta_tasa = tasa_comparar - tasa_base if tasa_base > 0 else None
     st.metric(
-        "Tasa de Conversión",
-        f"{tasa_act:.2f}%",
-        delta=f"{delta_tasa:.2f}%" if delta_tasa is not None else None
+        f"Tasa Conv. {año_comparar}",
+        f"{tasa_comparar:.2f}%",
+        delta=f"{delta_tasa:.2f} pp vs {año_base}" if delta_tasa is not None else "Sin datos base",
+        delta_color="normal" if delta_tasa is not None else "off"
     )
+    st.caption(f"{año_base}: {tasa_base:.2f}%")
 
 # ---------- ANÁLISIS POR SECCIÓN ----------
-st.subheader("📊 Comparación por Sección")
+st.subheader(f"📊 Comparación por Sección: {año_base} vs {año_comparar}")
 
 # Agrupar por sección y año
 seccion_comparacion = df_filtrado.groupby(["secciones", "anio"]).agg({
@@ -261,43 +295,69 @@ comparacion_secciones = []
 
 for seccion in secciones_unicas:
     datos_seccion = seccion_comparacion[seccion_comparacion["secciones"] == seccion]
-    dato_ant = datos_seccion[datos_seccion["anio"] == anio_ant]
-    dato_act = datos_seccion[datos_seccion["anio"] == anio_act]
+    dato_base = datos_seccion[datos_seccion["anio"] == año_base]
+    dato_comparar = datos_seccion[datos_seccion["anio"] == año_comparar]
     
-    if not dato_ant.empty and not dato_act.empty:
-        venta_ant = dato_ant["venta"].values[0]
-        venta_act = dato_act["venta"].values[0]
-        variacion = ((venta_act - venta_ant) / venta_ant * 100) if venta_ant > 0 else 0
+    if not dato_base.empty and not dato_comparar.empty:
+        venta_base = dato_base["venta"].values[0]
+        venta_comparar = dato_comparar["venta"].values[0]
+        variacion = ((venta_comparar - venta_base) / venta_base * 100) if venta_base > 0 else 0
         
         comparacion_secciones.append({
             "Sección": seccion,
-            f"Venta {anio_ant}": f"${venta_ant:,.0f}",
-            f"Venta {anio_act}": f"${venta_act:,.0f}",
+            f"Venta {año_base}": f"${venta_base:,.0f}",
+            f"Venta {año_comparar}": f"${venta_comparar:,.0f}",
             "Variación %": f"{variacion:.1f}%"
         })
 
 if comparacion_secciones:
     st.dataframe(pd.DataFrame(comparacion_secciones), use_container_width=True)
 else:
-    st.info("No hay datos completos para ambos años en ninguna sección")
+    st.info(f"No hay datos completos para ambos años en ninguna sección. Años disponibles: {', '.join(map(str, años_disponibles))}")
 
 # ---------- GRÁFICOS ----------
 st.subheader("📈 Evolución Temporal")
 
 try:
-    # Preparar datos para gráficos
-    df_evolucion = df_filtrado.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
+    # Filtrar solo los años seleccionados para el gráfico
+    df_grafico = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])]
     
-    # Gráfico de líneas para ventas
-    pivot_ventas = df_evolucion.pivot(index="fecha", columns="anio", values="venta").fillna(0)
-    st.line_chart(pivot_ventas)
+    # Preparar datos para gráficos
+    df_evolucion = df_grafico.groupby([pd.Grouper(key="fecha", freq="M"), "anio"])["venta"].sum().reset_index()
+    
+    if not df_evolucion.empty:
+        # Gráfico de líneas para ventas
+        pivot_ventas = df_evolucion.pivot(index="fecha", columns="anio", values="venta").fillna(0)
+        st.line_chart(pivot_ventas)
+    else:
+        st.info("No hay datos suficientes para generar el gráfico")
+        
 except Exception as e:
     st.warning(f"No se puede generar el gráfico: {e}")
 
 # ---------- DATOS DETALLADOS ----------
 with st.expander("📋 Ver datos detallados"):
+    # Mostrar estadísticas por año
+    st.subheader("Resumen por año")
+    resumen_anual = df_filtrado.groupby("anio").agg({
+        "venta": "sum",
+        "entradas": "sum",
+        "tickets": "sum",
+        "tasa_conversion": "mean"
+    }).round(2)
+    
+    resumen_anual.columns = ["Ventas Totales", "Entradas Totales", "Tickets Totales", "Tasa Conv. Promedio"]
+    resumen_anual["Ventas Totales"] = resumen_anual["Ventas Totales"].apply(lambda x: f"${x:,.0f}")
+    resumen_anual["Entradas Totales"] = resumen_anual["Entradas Totales"].apply(lambda x: f"{x:,.0f}")
+    resumen_anual["Tickets Totales"] = resumen_anual["Tickets Totales"].apply(lambda x: f"{x:,.0f}")
+    resumen_anual["Tasa Conv. Promedio"] = resumen_anual["Tasa Conv. Promedio"].apply(lambda x: f"{x:.2f}%")
+    
+    st.dataframe(resumen_anual, use_container_width=True)
+    
+    # Datos detallados
+    st.subheader("Registros detallados")
     st.dataframe(
-        df_filtrado.sort_values("fecha", ascending=False)
+        df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False])
         .style.format({
             "venta": "${:,.0f}",
             "ticket_promedio": "${:,.2f}",
