@@ -406,142 +406,358 @@ if not datos_base.empty and not datos_comparar.empty:
     # Preparar datos para gráficos
     df_plot = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
     df_plot['mes'] = df_plot['fecha'].dt.month
-    df_plot['mes_nombre'] = df_plot['fecha'].dt.strftime('%b')
     df_plot['año_str'] = df_plot['anio'].astype(str)
     
-    # Gráfico 1: Evolución mensual comparativa
+    # Diccionario de meses en español
+    meses_es = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    df_plot['mes_nombre'] = df_plot['mes'].map(meses_es)
+    
+    # Gráfico 1: Evolución mensual comparativa (mejorado)
     df_mensual = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
+    df_mensual = df_mensual.sort_values('mes')
     
-    fig1 = px.line(
-        df_mensual,
-        x='mes_nombre',
-        y='venta',
-        color='anio',
-        title='Evolución Mensual de Ventas',
-        labels={'mes_nombre': 'Mes', 'venta': 'Ventas ($)', 'anio': 'Año'},
-        color_discrete_map={año_base: '#1f77b4', año_comparar: '#ff7f0e'},
-        line_shape='spline',
-        markers=True
-    )
+    # Crear gráfico de líneas mejorado
+    fig1 = go.Figure()
     
-    fig1.update_traces(
-        line=dict(width=3),
-        marker=dict(size=8)
-    )
+    for año in [año_base, año_comparar]:
+        df_año = df_mensual[df_mensual['anio'] == año]
+        color = '#1f77b4' if año == año_base else '#ff7f0e'
+        nombre = f"Año {año}"
+        
+        fig1.add_trace(go.Scatter(
+            x=df_año['mes_nombre'],
+            y=df_año['venta'],
+            mode='lines+markers+text',
+            name=nombre,
+            line=dict(color=color, width=3),
+            marker=dict(size=10, symbol='circle'),
+            text=df_año['venta'].apply(lambda x: f'${x/1e6:.1f}M'),
+            textposition='top center',
+            textfont=dict(size=10, color=color),
+            hovertemplate='<b>%{x}</b><br>' +
+                         'Ventas: $%{y:,.0f}<br>' +
+                         '<extra>%{fullData.name}</extra>'
+        ))
     
     fig1.update_layout(
-        hovermode='x unified',
+        title=dict(
+            text='Evolución Mensual de Ventas',
+            x=0.5,
+            font=dict(size=20)
+        ),
+        xaxis=dict(
+            title='Mes',
+            tickangle=45,
+            categoryorder='array',
+            categoryarray=list(meses_es.values()),
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
         plot_bgcolor='white',
         paper_bgcolor='white',
-        font=dict(family="Arial", size=12),
-        title=dict(x=0.5, xanchor='center'),
+        hovermode='x unified',
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
+            orientation='h',
+            yanchor='bottom',
             y=1.02,
-            xanchor="right",
-            x=1
-        )
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=100)
     )
-    
-    fig1.update_xaxes(
-        categoryorder='array',
-        categoryarray=['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
-                      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
-        gridcolor='lightgray'
-    )
-    
-    fig1.update_yaxes(gridcolor='lightgray')
     
     st.plotly_chart(fig1, use_container_width=True)
     
-    # Gráfico 2: Barras comparativas por sección
+    # Gráfico 2: Barras comparativas por sección (mejorado)
     st.markdown("### 📊 Comparación por Sección")
     
     df_secciones = df_plot.groupby(['secciones', 'anio'])['venta'].sum().reset_index()
     
-    fig2 = px.bar(
-        df_secciones,
-        x='secciones',
-        y='venta',
-        color='anio',
-        barmode='group',
-        title='Ventas por Sección - Comparativa Anual',
-        labels={'secciones': 'Sección', 'venta': 'Ventas ($)', 'anio': 'Año'},
-        color_discrete_map={año_base: '#1f77b4', año_comparar: '#ff7f0e'},
-        text_auto='.2s'
-    )
+    # Calcular variación porcentual para cada sección
+    secciones_unicas = df_secciones['secciones'].unique()
+    colores_secciones = px.colors.qualitative.Set3[:len(secciones_unicas)]
+    
+    fig2 = go.Figure()
+    
+    for i, año in enumerate([año_base, año_comparar]):
+        df_año = df_secciones[df_secciones['anio'] == año]
+        color = '#1f77b4' if año == año_base else '#ff7f0e'
+        nombre = f"Año {año}"
+        
+        fig2.add_trace(go.Bar(
+            x=df_año['secciones'],
+            y=df_año['venta'],
+            name=nombre,
+            marker_color=color,
+            text=df_año['venta'].apply(lambda x: f'${x/1e6:.1f}M'),
+            textposition='outside',
+            textfont=dict(size=11),
+            hovertemplate='<b>%{x}</b><br>' +
+                         'Ventas: $%{y:,.0f}<br>' +
+                         '<extra>%{fullData.name}</extra>'
+        ))
     
     fig2.update_layout(
+        title=dict(
+            text='Ventas por Sección - Comparativa Anual',
+            x=0.5,
+            font=dict(size=18)
+        ),
+        xaxis=dict(
+            title='Sección',
+            tickangle=45,
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
         plot_bgcolor='white',
         paper_bgcolor='white',
-        font=dict(family="Arial", size=12),
-        title=dict(x=0.5, xanchor='center'),
+        barmode='group',
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
+            orientation='h',
+            yanchor='bottom',
             y=1.02,
-            xanchor="right",
-            x=1
-        )
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=100)
     )
-    
-    fig2.update_xaxes(gridcolor='lightgray')
-    fig2.update_yaxes(gridcolor='lightgray')
     
     st.plotly_chart(fig2, use_container_width=True)
     
-    # Gráfico 3: Distribución de tickets y entradas
+    # Gráfico 3: Distribución de tickets y entradas (mejorado)
     st.markdown("### 📈 Análisis de Eficiencia")
     
     df_eficiencia = df_plot.groupby('anio').agg({
         'tickets': 'sum',
         'entradas': 'sum',
-        'ticket_promedio': 'mean'
+        'ticket_promedio': 'mean',
+        'tasa_conversion': 'mean'
     }).reset_index()
     
+    # Crear subplots con 2 gráficos
     fig3 = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=('Tickets vs Entradas', 'Ticket Promedio'),
-        specs=[[{'type': 'bar'}, {'type': 'bar'}]]
+        rows=2, cols=2,
+        subplot_titles=('Tickets vs Entradas', 'Ticket Promedio', 
+                       'Tasa de Conversión', 'Distribución %'),
+        specs=[
+            [{'type': 'bar'}, {'type': 'bar'}],
+            [{'type': 'bar'}, {'type': 'pie'}]
+        ]
     )
     
-    # Gráfico de barras para tickets y entradas
-    fig3.add_trace(
-        go.Bar(name='Tickets', x=df_eficiencia['anio'], y=df_eficiencia['tickets'],
-               marker_color='#1f77b4', text=df_eficiencia['tickets'].apply(lambda x: f'{x:,.0f}'),
-               textposition='outside'),
-        row=1, col=1
-    )
+    # Gráfico 1: Tickets vs Entradas
+    for i, año in enumerate([año_base, año_comparar]):
+        df_año = df_eficiencia[df_eficiencia['anio'] == año]
+        color = '#1f77b4' if año == año_base else '#ff7f0e'
+        
+        fig3.add_trace(
+            go.Bar(
+                name=f'Tickets {año}',
+                x=[str(año)],
+                y=df_año['tickets'],
+                marker_color=color,
+                text=df_año['tickets'].apply(lambda x: f'{x:,.0f}'),
+                textposition='inside',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        fig3.add_trace(
+            go.Bar(
+                name=f'Entradas {año}',
+                x=[str(año)],
+                y=df_año['entradas'],
+                marker_color=color,
+                marker_pattern_shape="/" if año == año_comparar else "",
+                text=df_año['entradas'].apply(lambda x: f'{x:,.0f}'),
+                textposition='inside',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
     
+    # Gráfico 2: Ticket Promedio
     fig3.add_trace(
-        go.Bar(name='Entradas', x=df_eficiencia['anio'], y=df_eficiencia['entradas'],
-               marker_color='#ff7f0e', text=df_eficiencia['entradas'].apply(lambda x: f'{x:,.0f}'),
-               textposition='outside'),
-        row=1, col=1
-    )
-    
-    # Gráfico de barras para ticket promedio
-    fig3.add_trace(
-        go.Bar(name='Ticket Promedio', x=df_eficiencia['anio'], y=df_eficiencia['ticket_promedio'],
-               marker_color='#2ca02c', text=df_eficiencia['ticket_promedio'].apply(lambda x: f'${x:,.2f}'),
-               textposition='outside'),
+        go.Bar(
+            x=df_eficiencia['anio'].astype(str),
+            y=df_eficiencia['ticket_promedio'],
+            marker_color=['#1f77b4', '#ff7f0e'],
+            text=df_eficiencia['ticket_promedio'].apply(lambda x: f'${x:,.2f}'),
+            textposition='outside',
+            showlegend=False
+        ),
         row=1, col=2
     )
     
+    # Gráfico 3: Tasa de Conversión
+    fig3.add_trace(
+        go.Bar(
+            x=df_eficiencia['anio'].astype(str),
+            y=df_eficiencia['tasa_conversion'],
+            marker_color=['#1f77b4', '#ff7f0e'],
+            text=df_eficiencia['tasa_conversion'].apply(lambda x: f'{x:.2f}%'),
+            textposition='outside',
+            showlegend=False
+        ),
+        row=2, col=1
+    )
+    
+    # Gráfico 4: Distribución de ventas por año (pie chart)
+    ventas_totales = df_eficiencia.set_index('anio')['venta'].to_dict()
+    fig3.add_trace(
+        go.Pie(
+            labels=[f'Año {año}' for año in [año_base, año_comparar]],
+            values=[ventas_totales[año_base], ventas_totales[año_comparar]],
+            marker_colors=['#1f77b4', '#ff7f0e'],
+            textinfo='label+percent',
+            textposition='inside',
+            hole=0.3,
+            showlegend=False
+        ),
+        row=2, col=2
+    )
+    
     fig3.update_layout(
-        showlegend=True,
+        height=600,
+        title_text="Métricas de Eficiencia",
+        title_x=0.5,
+        title_font=dict(size=18),
         plot_bgcolor='white',
         paper_bgcolor='white',
-        height=400,
-        title_text="Métricas de Eficiencia",
-        title_x=0.5
+        showlegend=False
     )
     
     fig3.update_xaxes(gridcolor='lightgray')
-    fig3.update_yaxes(gridcolor='lightgray')
+    fig3.update_yaxes(gridcolor='lightgray', tickformat='$,.0f', row=1, col=2)
+    fig3.update_yaxes(gridcolor='lightgray', tickformat='.1f', row=2, col=1)
     
     st.plotly_chart(fig3, use_container_width=True)
+    
+    # Gráfico 4: Heatmap de rendimiento por mes y sección (nuevo)
+    st.markdown("### 🔥 Mapa de Calor - Rendimiento por Mes y Sección")
+    
+    # Seleccionar año para el heatmap
+    año_heatmap = st.radio(
+        "Selecciona año para ver el detalle:",
+        [año_base, año_comparar],
+        horizontal=True
+    )
+    
+    df_heat = df_plot[df_plot['anio'] == año_heatmap].copy()
+    
+    if not df_heat.empty:
+        # Crear tabla pivote para el heatmap
+        pivot_heat = df_heat.pivot_table(
+            values='venta',
+            index='secciones',
+            columns='mes_nombre',
+            aggfunc='sum',
+            fill_value=0
+        )
+        
+        # Reordenar meses
+        pivot_heat = pivot_heat[list(meses_es.values())]
+        
+        fig4 = go.Figure(data=go.Heatmap(
+            z=pivot_heat.values,
+            x=pivot_heat.columns,
+            y=pivot_heat.index,
+            colorscale='Viridis',
+            text=pivot_heat.values,
+            texttemplate='$%{text:,.0f}',
+            textfont={"size": 10},
+            hovertemplate='<b>%{y}</b><br>' +
+                         'Mes: %{x}<br>' +
+                         'Ventas: $%{z:,.0f}<br>' +
+                         '<extra></extra>'
+        ))
+        
+        fig4.update_layout(
+            title=f'Distribución de Ventas {año_heatmap}',
+            xaxis=dict(
+                title='Mes',
+                tickangle=45
+            ),
+            yaxis=dict(
+                title='Sección'
+            ),
+            height=400,
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig4, use_container_width=True)
+    
+    # Gráfico 5: Tendencia de ticket promedio (nuevo)
+    st.markdown("### 📈 Evolución del Ticket Promedio")
+    
+    df_ticket = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['ticket_promedio'].mean().reset_index()
+    df_ticket = df_ticket.sort_values('mes')
+    
+    fig5 = go.Figure()
+    
+    for año in [año_base, año_comparar]:
+        df_año = df_ticket[df_ticket['anio'] == año]
+        color = '#1f77b4' if año == año_base else '#ff7f0e'
+        nombre = f"Año {año}"
+        
+        fig5.add_trace(go.Scatter(
+            x=df_año['mes_nombre'],
+            y=df_año['ticket_promedio'],
+            mode='lines+markers',
+            name=nombre,
+            line=dict(color=color, width=3, dash='solid'),
+            marker=dict(size=8),
+            hovertemplate='<b>%{x}</b><br>' +
+                         'Ticket Prom.: $%{y:,.2f}<br>' +
+                         '<extra>%{fullData.name}</extra>'
+        ))
+    
+    fig5.update_layout(
+        xaxis=dict(
+            title='Mes',
+            tickangle=45,
+            categoryorder='array',
+            categoryarray=list(meses_es.values())
+        ),
+        yaxis=dict(
+            title='Ticket Promedio ($)',
+            tickformat='$,.2f',
+            gridcolor='lightgray'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        )
+    )
+    
+    st.plotly_chart(fig5, use_container_width=True)
+
+else:
+    if datos_base.empty and datos_comparar.empty:
+        st.warning("No hay datos para los años seleccionados en el rango de fechas")
+    elif datos_base.empty:
+        st.info(f"Solo hay datos para {año_comparar}. Selecciona otro año base para comparar.")
+    else:
+        st.info(f"Solo hay datos para {año_base}. Selecciona otro año para comparar.")
 
 # ---------- COMPARACIÓN DÍA A DÍA ----------
 st.markdown(f'<div class="section-title">📅 Comparación Día a Día</div>', unsafe_allow_html=True)
