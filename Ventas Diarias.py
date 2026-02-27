@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime
 import os
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import locale
 
 # Intentar configurar locale en español
@@ -143,6 +145,25 @@ st.markdown("""
     /* Mes y año en el calendario */
     div[data-baseweb="calendar"] div[role="presentation"] {
         text-transform: capitalize;
+    }
+    
+    /* Estilo para tarjetas de gráficos */
+    .chart-card {
+        background-color: white;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        margin-bottom: 1rem;
+    }
+    
+    .chart-title {
+        color: #495057;
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e9ecef;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -360,19 +381,32 @@ entradas_base = df_base["entradas"].sum()
 entradas_comp = df_comp["entradas"].sum()
 delta_entradas = ((entradas_comp - entradas_base) / entradas_base * 100) if entradas_base > 0 else 0
 
-# Ticket promedio
+# Tickets
 tickets_base = df_base["tickets"].sum()
 tickets_comp = df_comp["tickets"].sum()
-ticket_base = ventas_base / tickets_base if tickets_base > 0 else 0
-ticket_comp = ventas_comp / tickets_comp if tickets_comp > 0 else 0
-delta_ticket = ((ticket_comp - ticket_base) / ticket_base * 100) if ticket_base > 0 else 0
+delta_tickets = ((tickets_comp - tickets_base) / tickets_base * 100) if tickets_base > 0 else 0
+
+# Artículos
+articulos_base = df_base["articulos"].sum()
+articulos_comp = df_comp["articulos"].sum()
+delta_articulos = ((articulos_comp - articulos_base) / articulos_base * 100) if articulos_base > 0 else 0
+
+# Ticket promedio
+ticket_prom_base = ventas_base / tickets_base if tickets_base > 0 else 0
+ticket_prom_comp = ventas_comp / tickets_comp if tickets_comp > 0 else 0
+delta_ticket_prom = ((ticket_prom_comp - ticket_prom_base) / ticket_prom_base * 100) if ticket_prom_base > 0 else 0
+
+# Artículos por ticket
+articulos_x_ticket_base = articulos_base / tickets_base if tickets_base > 0 else 0
+articulos_x_ticket_comp = articulos_comp / tickets_comp if tickets_comp > 0 else 0
+delta_articulos_x_ticket = ((articulos_x_ticket_comp - articulos_x_ticket_base) / articulos_x_ticket_base * 100) if articulos_x_ticket_base > 0 else 0
 
 # Tasa conversión
 tasa_base = df_base["tasa_conversion"].mean() if not df_base.empty else 0
 tasa_comp = df_comp["tasa_conversion"].mean() if not df_comp.empty else 0
 delta_tasa = tasa_comp - tasa_base
 
-# Mostrar métricas en 4 columnas
+# Mostrar métricas en 4 columnas (primera fila)
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -402,19 +436,61 @@ with col2:
     """, unsafe_allow_html=True)
 
 with col3:
-    delta_class = "delta-positive" if delta_ticket > 0 else "delta-negative" if delta_ticket < 0 else ""
+    delta_class = "delta-positive" if delta_tickets > 0 else "delta-negative" if delta_tickets < 0 else ""
     st.markdown(f"""
         <div class='metric-card'>
-            <div class='metric-title'>🎫 Ticket Promedio</div>
-            <div class='metric-value'>${ticket_comp:,.2f}</div>
+            <div class='metric-title'>🎟️ Tickets</div>
+            <div class='metric-value'>{tickets_comp:,.0f}</div>
             <div class='metric-delta {delta_class}'>
-                {delta_ticket:+.1f}% vs {año_base}
+                {delta_tickets:+.1f}% vs {año_base}
             </div>
-            <div class='metric-sub'>{año_base}: ${ticket_base:,.2f}</div>
+            <div class='metric-sub'>{año_base}: {tickets_base:,.0f}</div>
         </div>
     """, unsafe_allow_html=True)
 
 with col4:
+    delta_class = "delta-positive" if delta_articulos > 0 else "delta-negative" if delta_articulos < 0 else ""
+    st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>📦 Artículos</div>
+            <div class='metric-value'>{articulos_comp:,.0f}</div>
+            <div class='metric-delta {delta_class}'>
+                {delta_articulos:+.1f}% vs {año_base}
+            </div>
+            <div class='metric-sub'>{año_base}: {articulos_base:,.0f}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# Segunda fila de métricas
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    delta_class = "delta-positive" if delta_ticket_prom > 0 else "delta-negative" if delta_ticket_prom < 0 else ""
+    st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>🎫 Ticket Promedio</div>
+            <div class='metric-value'>${ticket_prom_comp:,.2f}</div>
+            <div class='metric-delta {delta_class}'>
+                {delta_ticket_prom:+.1f}% vs {año_base}
+            </div>
+            <div class='metric-sub'>{año_base}: ${ticket_prom_base:,.2f}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    delta_class = "delta-positive" if delta_articulos_x_ticket > 0 else "delta-negative" if delta_articulos_x_ticket < 0 else ""
+    st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>📊 Artículos/Ticket</div>
+            <div class='metric-value'>{articulos_x_ticket_comp:.2f}</div>
+            <div class='metric-delta {delta_class}'>
+                {delta_articulos_x_ticket:+.1f}% vs {año_base}
+            </div>
+            <div class='metric-sub'>{año_base}: {articulos_x_ticket_base:.2f}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col3:
     delta_class = "delta-positive" if delta_tasa > 0 else "delta-negative" if delta_tasa < 0 else ""
     st.markdown(f"""
         <div class='metric-card'>
@@ -427,89 +503,372 @@ with col4:
         </div>
     """, unsafe_allow_html=True)
 
-# ---------- ANÁLISIS VISUAL ----------
-st.subheader("📊 Análisis Visual")
+# ---------- GRÁFICAS COMPARATIVAS ----------
+st.subheader("📊 Análisis Comparativo por Indicador")
 
-tab1, tab2, tab3 = st.tabs(["📈 Evolución Mensual", "🏷️ Por Sección", "📋 Detalle"])
+# Preparar datos para gráficas
+df_graf = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
+df_graf["mes"] = df_graf["fecha"].dt.month
+df_graf["nombre_mes"] = df_graf["mes"].map(MESES_ES)
+
+# Crear pestañas para diferentes tipos de análisis
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📈 Evolución Temporal", 
+    "📊 Comparativa Mensual",
+    "🥧 Distribución",
+    "📉 Análisis de Ratios"
+])
 
 with tab1:
-    # Gráfico de evolución
-    df_graf = df_filtrado[df_filtrado["anio"].isin([año_base, año_comparar])].copy()
+    # Gráficas de evolución temporal para cada métrica
+    col1, col2 = st.columns(2)
     
-    if not df_graf.empty:
-        df_graf["mes"] = df_graf["fecha"].dt.month
-        df_graf["nombre_mes"] = df_graf["mes"].map(MESES_ES)
-        df_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["venta"].sum().reset_index()
+    with col1:
+        # Ventas por mes
+        df_ventas_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["venta"].sum().reset_index()
+        df_ventas_mensual = df_ventas_mensual.sort_values("mes")
         
-        # Ordenar por mes
-        df_mensual = df_mensual.sort_values("mes")
-        
-        # Crear gráfico con Plotly
         fig = px.line(
-            df_mensual,
+            df_ventas_mensual,
             x="nombre_mes",
             y="venta",
             color="anio",
-            title=f"Evolución de Ventas {año_base} vs {año_comparar}",
+            title="Evolución de Ventas por Mes",
             labels={"nombre_mes": "Mes", "venta": "Ventas ($)", "anio": "Año"},
             color_discrete_sequence=['#FF6B6B', '#4ECDC4']
         )
-        fig.update_layout(
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            font_color='#212529',
-            xaxis_tickangle=-45
-        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar")
+    
+    with col2:
+        # Entradas por mes
+        df_entradas_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["entradas"].sum().reset_index()
+        df_entradas_mensual = df_entradas_mensual.sort_values("mes")
+        
+        fig = px.line(
+            df_entradas_mensual,
+            x="nombre_mes",
+            y="entradas",
+            color="anio",
+            title="Evolución de Entradas por Mes",
+            labels={"nombre_mes": "Mes", "entradas": "Entradas", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Tickets por mes
+        df_tickets_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["tickets"].sum().reset_index()
+        df_tickets_mensual = df_tickets_mensual.sort_values("mes")
+        
+        fig = px.line(
+            df_tickets_mensual,
+            x="nombre_mes",
+            y="tickets",
+            color="anio",
+            title="Evolución de Tickets por Mes",
+            labels={"nombre_mes": "Mes", "tickets": "Tickets", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Artículos por mes
+        df_articulos_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["articulos"].sum().reset_index()
+        df_articulos_mensual = df_articulos_mensual.sort_values("mes")
+        
+        fig = px.line(
+            df_articulos_mensual,
+            x="nombre_mes",
+            y="articulos",
+            color="anio",
+            title="Evolución de Artículos por Mes",
+            labels={"nombre_mes": "Mes", "articulos": "Artículos", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    # Análisis por sección
-    df_seccion = df_graf.groupby(["secciones", "anio"])["venta"].sum().reset_index()
+    # Gráficas de barras comparativas
+    col1, col2 = st.columns(2)
     
-    if not df_seccion.empty:
-        datos_seccion = []
-        for seccion in df_seccion["secciones"].unique():
-            datos = df_seccion[df_seccion["secciones"] == seccion]
-            val_base = datos[datos["anio"] == año_base]["venta"].values
-            val_comp = datos[datos["anio"] == año_comparar]["venta"].values
-            
-            if len(val_base) > 0 and len(val_comp) > 0:
-                var = ((val_comp[0] - val_base[0]) / val_base[0] * 100) if val_base[0] > 0 else 0
-                datos_seccion.append({
-                    "Sección": seccion,
-                    f"Ventas {año_base}": f"${val_base[0]:,.0f}",
-                    f"Ventas {año_comparar}": f"${val_comp[0]:,.0f}",
-                    "Variación": f"{var:+.1f}%"
-                })
-        
-        if datos_seccion:
-            st.dataframe(pd.DataFrame(datos_seccion), use_container_width=True, hide_index=True)
+    with col1:
+        # Comparativa ventas por mes
+        fig = px.bar(
+            df_ventas_mensual,
+            x="nombre_mes",
+            y="venta",
+            color="anio",
+            title="Comparativa de Ventas por Mes",
+            barmode="group",
+            labels={"nombre_mes": "Mes", "venta": "Ventas ($)", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Comparativa entradas por mes
+        fig = px.bar(
+            df_entradas_mensual,
+            x="nombre_mes",
+            y="entradas",
+            color="anio",
+            title="Comparativa de Entradas por Mes",
+            barmode="group",
+            labels={"nombre_mes": "Mes", "entradas": "Entradas", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Comparativa tickets por mes
+        fig = px.bar(
+            df_tickets_mensual,
+            x="nombre_mes",
+            y="tickets",
+            color="anio",
+            title="Comparativa de Tickets por Mes",
+            barmode="group",
+            labels={"nombre_mes": "Mes", "tickets": "Tickets", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Comparativa artículos por mes
+        fig = px.bar(
+            df_articulos_mensual,
+            x="nombre_mes",
+            y="articulos",
+            color="anio",
+            title="Comparativa de Artículos por Mes",
+            barmode="group",
+            labels={"nombre_mes": "Mes", "articulos": "Artículos", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    # Datos detallados con formato español
-    if not df_filtrado.empty:
-        df_detalle = df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False]).copy()
-        df_detalle["fecha_str"] = pd.to_datetime(df_detalle["fecha"]).apply(formato_fecha_es)
+    # Gráficas de distribución
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Distribución de ventas por sección (año a comparar)
+        df_seccion_comp = df_comp.groupby("secciones")["venta"].sum().reset_index()
         
-        st.dataframe(
-            df_detalle[["fecha_str", "secciones", "entradas", "venta", "tickets", 
-                       "articulos", "ticket_promedio", "tasa_conversion", "anio"]],
-            column_config={
-                "fecha_str": "Fecha",
-                "secciones": "Sección",
-                "entradas": "Entradas",
-                "venta": st.column_config.NumberColumn("Venta", format="$%d"),
-                "tickets": "Tickets",
-                "articulos": "Artículos",
-                "ticket_promedio": st.column_config.NumberColumn("Ticket Prom.", format="$%.2f"),
-                "tasa_conversion": st.column_config.NumberColumn("Tasa Conv.", format="%.2f%%"),
-                "anio": "Año"
-            },
-            use_container_width=True,
-            hide_index=True
+        fig = px.pie(
+            df_seccion_comp,
+            values="venta",
+            names="secciones",
+            title=f"Distribución de Ventas por Sección - {año_comparar}",
+            color_discrete_sequence=px.colors.sequential.Viridis
         )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Distribución de ventas por sección (año base)
+        df_seccion_base = df_base.groupby("secciones")["venta"].sum().reset_index()
+        
+        fig = px.pie(
+            df_seccion_base,
+            values="venta",
+            names="secciones",
+            title=f"Distribución de Ventas por Sección - {año_base}",
+            color_discrete_sequence=px.colors.sequential.Plasma
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Distribución de entradas por sección
+        df_entradas_seccion = df_graf.groupby(["secciones", "anio"])["entradas"].sum().reset_index()
+        
+        fig = px.bar(
+            df_entradas_seccion,
+            x="secciones",
+            y="entradas",
+            color="anio",
+            title="Entradas por Sección",
+            barmode="group",
+            labels={"secciones": "Sección", "entradas": "Entradas", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Distribución de tickets por sección
+        df_tickets_seccion = df_graf.groupby(["secciones", "anio"])["tickets"].sum().reset_index()
+        
+        fig = px.bar(
+            df_tickets_seccion,
+            x="secciones",
+            y="tickets",
+            color="anio",
+            title="Tickets por Sección",
+            barmode="group",
+            labels={"secciones": "Sección", "tickets": "Tickets", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+
+with tab4:
+    # Análisis de ratios
+    col1, col2 = st.columns(2)
+    
+    # Calcular ratios por mes
+    df_ratios = df_graf.groupby(["anio", "mes", "nombre_mes"]).agg({
+        "venta": "sum",
+        "entradas": "sum",
+        "tickets": "sum",
+        "articulos": "sum"
+    }).reset_index()
+    
+    df_ratios["ticket_promedio"] = df_ratios["venta"] / df_ratios["tickets"]
+    df_ratios["articulos_por_ticket"] = df_ratios["articulos"] / df_ratios["tickets"]
+    df_ratios["tasa_conversion"] = (df_ratios["tickets"] / df_ratios["entradas"] * 100)
+    df_ratios = df_ratios.sort_values("mes")
+    
+    with col1:
+        # Ticket promedio por mes
+        fig = px.line(
+            df_ratios,
+            x="nombre_mes",
+            y="ticket_promedio",
+            color="anio",
+            title="Evolución del Ticket Promedio",
+            labels={"nombre_mes": "Mes", "ticket_promedio": "Ticket Promedio ($)", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Artículos por ticket por mes
+        fig = px.line(
+            df_ratios,
+            x="nombre_mes",
+            y="articulos_por_ticket",
+            color="anio",
+            title="Evolución de Artículos por Ticket",
+            labels={"nombre_mes": "Mes", "articulos_por_ticket": "Artículos/Ticket", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Tasa de conversión por mes
+        fig = px.line(
+            df_ratios,
+            x="nombre_mes",
+            y="tasa_conversion",
+            color="anio",
+            title="Evolución de la Tasa de Conversión",
+            labels={"nombre_mes": "Mes", "tasa_conversion": "Tasa de Conversión (%)", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Comparativa de ratios (barras)
+        df_ratios_agg = df_ratios.groupby("anio")[["ticket_promedio", "articulos_por_ticket", "tasa_conversion"]].mean().reset_index()
+        df_ratios_melt = pd.melt(
+            df_ratios_agg, 
+            id_vars=["anio"], 
+            value_vars=["ticket_promedio", "articulos_por_ticket", "tasa_conversion"],
+            var_name="Métrica", 
+            value_name="Valor"
+        )
+        
+        fig = px.bar(
+            df_ratios_melt,
+            x="Métrica",
+            y="Valor",
+            color="anio",
+            title="Comparativa de Ratios Promedio",
+            barmode="group",
+            labels={"Métrica": "Métrica", "Valor": "Valor", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='#212529')
+        st.plotly_chart(fig, use_container_width=True)
+
+# ---------- ANÁLISIS POR SECCIÓN (Tabla Detallada) ----------
+st.subheader("📋 Análisis Detallado por Sección")
+
+df_seccion_detalle = df_graf.groupby(["secciones", "anio"]).agg({
+    "venta": "sum",
+    "entradas": "sum",
+    "tickets": "sum",
+    "articulos": "sum",
+    "tasa_conversion": "mean"
+}).round(2).reset_index()
+
+# Calcular variaciones
+secciones_unicas = df_seccion_detalle["secciones"].unique()
+datos_detalle = []
+
+for seccion in secciones_unicas:
+    datos = df_seccion_detalle[df_seccion_detalle["secciones"] == seccion]
+    datos_base = datos[datos["anio"] == año_base]
+    datos_comp = datos[datos["anio"] == año_comparar]
+    
+    if not datos_base.empty and not datos_comp.empty:
+        venta_base = datos_base["venta"].values[0]
+        venta_comp = datos_comp["venta"].values[0]
+        var_venta = ((venta_comp - venta_base) / venta_base * 100) if venta_base > 0 else 0
+        
+        entradas_base = datos_base["entradas"].values[0]
+        entradas_comp = datos_comp["entradas"].values[0]
+        var_entradas = ((entradas_comp - entradas_base) / entradas_base * 100) if entradas_base > 0 else 0
+        
+        tickets_base = datos_base["tickets"].values[0]
+        tickets_comp = datos_comp["tickets"].values[0]
+        var_tickets = ((tickets_comp - tickets_base) / tickets_base * 100) if tickets_base > 0 else 0
+        
+        ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
+        ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
+        var_ticket_prom = ((ticket_prom_comp - ticket_prom_base) / ticket_prom_base * 100) if ticket_prom_base > 0 else 0
+        
+        tasa_base = datos_base["tasa_conversion"].values[0]
+        tasa_comp = datos_comp["tasa_conversion"].values[0]
+        delta_tasa = tasa_comp - tasa_base
+        
+        datos_detalle.append({
+            "Sección": seccion,
+            f"Ventas {año_base}": f"${venta_base:,.0f}",
+            f"Ventas {año_comparar}": f"${venta_comp:,.0f}",
+            "Var Ventas": f"{var_venta:+.1f}%",
+            f"Entradas {año_base}": f"{entradas_base:,.0f}",
+            f"Entradas {año_comparar}": f"{entradas_comp:,.0f}",
+            "Var Entradas": f"{var_entradas:+.1f}%",
+            "Ticket Prom Comp": f"${ticket_prom_comp:,.2f}",
+            "Var Ticket": f"{var_ticket_prom:+.1f}%",
+            "Tasa Conv Comp": f"{tasa_comp:.2f}%",
+            "Delta Tasa": f"{delta_tasa:+.2f} pp"
+        })
+
+if datos_detalle:
+    st.dataframe(pd.DataFrame(datos_detalle), use_container_width=True, hide_index=True)
 
 # ---------- RESUMEN DEL PERÍODO ----------
 with st.expander("📅 Resumen del período seleccionado"):
@@ -519,6 +878,15 @@ with st.expander("📅 Resumen del período seleccionado"):
     - **Años comparados:** {año_base} vs {año_comparar}
     - **Secciones incluidas:** {', '.join(secciones_seleccionadas)}
     - **Total de registros:** {len(df_filtrado):,}
+    
+    **Resumen de variaciones:**
+    - Ventas: {delta_ventas:+.1f}%
+    - Entradas: {delta_entradas:+.1f}%
+    - Tickets: {delta_tickets:+.1f}%
+    - Artículos: {delta_articulos:+.1f}%
+    - Ticket Promedio: {delta_ticket_prom:+.1f}%
+    - Artículos/Ticket: {delta_articulos_x_ticket:+.1f}%
+    - Tasa Conversión: {delta_tasa:+.2f} pp
     """)
 
 # ---------- PIE DE PÁGINA ----------
