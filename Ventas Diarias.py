@@ -373,32 +373,51 @@ st.info(f"📅 Mostrando datos del {fecha_inicio.strftime('%d/%m/%Y')} al {fecha
 # ---------- COMPARACIÓN DÍA A DÍA ----------
 st.subheader(f"📅 Comparación Día a Día: {año_base} vs {año_comparar}")
 
+# Configurar locale en español para los date pickers
+try:
+    import locale
+    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')  # Intentar configurar locale en español
+except:
+    pass  # Si no se puede configurar, seguir con el locale por defecto
+
 # Crear selector de fecha para comparación día a día
 st.write("Selecciona un día para comparar entre años:")
 
-# Obtener todas las fechas únicas del año base y año comparar (usando los datos filtrados)
-fechas_base = sorted(df_filtrado[df_filtrado["anio"] == año_base]["fecha"].dt.date.unique())
-fechas_comparar = sorted(df_filtrado[df_filtrado["anio"] == año_comparar]["fecha"].dt.date.unique())
+# Obtener todas las fechas únicas del año base y año comparar para conocer los rangos
+fechas_base = df_filtrado[df_filtrado["anio"] == año_base]["fecha"].dt.date.unique()
+fechas_comparar = df_filtrado[df_filtrado["anio"] == año_comparar]["fecha"].dt.date.unique()
 
-if not fechas_base or not fechas_comparar:
+if len(fechas_base) == 0 or len(fechas_comparar) == 0:
     st.warning(f"No hay fechas disponibles para comparar entre {año_base} y {año_comparar} en el rango seleccionado")
 else:
+    # Determinar rangos de fechas mínimos y máximos para cada año
+    min_fecha_base = min(fechas_base)
+    max_fecha_base = max(fechas_base)
+    min_fecha_comparar = min(fechas_comparar)
+    max_fecha_comparar = max(fechas_comparar)
+    
     col_dia1, col_dia2, col_dia3 = st.columns([2, 2, 1])
     
     with col_dia1:
-        fecha_base_seleccionada = st.selectbox(
-            f"Día en {año_base}",
-            options=fechas_base,
-            format_func=lambda x: x.strftime("%d/%m/%Y"),
-            key="fecha_base"
+        st.markdown(f"**{año_base}**")
+        fecha_base_seleccionada = st.date_input(
+            "Selecciona fecha",
+            value=min_fecha_base,
+            min_value=min_fecha_base,
+            max_value=max_fecha_base,
+            key="fecha_base_calendario",
+            format="DD/MM/YYYY"
         )
     
     with col_dia2:
-        fecha_comparar_seleccionada = st.selectbox(
-            f"Día en {año_comparar}",
-            options=fechas_comparar,
-            format_func=lambda x: x.strftime("%d/%m/%Y"),
-            key="fecha_comparar"
+        st.markdown(f"**{año_comparar}**")
+        fecha_comparar_seleccionada = st.date_input(
+            "Selecciona fecha",
+            value=min_fecha_comparar,
+            min_value=min_fecha_comparar,
+            max_value=max_fecha_comparar,
+            key="fecha_comparar_calendario",
+            format="DD/MM/YYYY"
         )
     
     with col_dia3:
@@ -408,32 +427,56 @@ else:
     
     # Botón para buscar fechas similares (mismo mes y día)
     if buscar_btn:
-        encontrado = False
-        for fecha_b in fechas_base:
-            for fecha_c in fechas_comparar:
-                if fecha_b.month == fecha_c.month and fecha_b.day == fecha_c.day:
-                    fecha_base_seleccionada = fecha_b
-                    fecha_comparar_seleccionada = fecha_c
-                    st.success(f"✓ Encontrado: {fecha_base_seleccionada.strftime('%d/%m')} en ambos años")
-                    encontrado = True
-                    break
-            if encontrado:
+        # Crear un diccionario con fechas del año comparar agrupadas por mes-día
+        fechas_comparar_por_mes_dia = {}
+        for fecha in fechas_comparar:
+            clave = (fecha.month, fecha.day)
+            if clave not in fechas_comparar_por_mes_dia:
+                fechas_comparar_por_mes_dia[clave] = fecha
+        
+        # Buscar la fecha en año base que tenga mismo mes/día en año comparar
+        fecha_encontrada = None
+        for fecha_b in sorted(fechas_base):
+            clave = (fecha_b.month, fecha_b.day)
+            if clave in fechas_comparar_por_mes_dia:
+                fecha_encontrada = fecha_b
+                fecha_comparar_encontrada = fechas_comparar_por_mes_dia[clave]
                 break
-        if not encontrado:
+        
+        if fecha_encontrada:
+            fecha_base_seleccionada = fecha_encontrada
+            fecha_comparar_seleccionada = fecha_comparar_encontrada
+            # Crear mensaje con nombres de mes en español
+            meses_es = {
+                1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+                7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+            }
+            st.success(f"✓ Encontrado: {fecha_encontrada.day} de {meses_es[fecha_encontrada.month]} en ambos años")
+        else:
             st.warning("No se encontró el mismo mes/día en ambos años")
     
-    # Obtener datos para las fechas seleccionadas
-    datos_dia_base = df_filtrado[
-        (df_filtrado["anio"] == año_base) & 
-        (df_filtrado["fecha"].dt.date == fecha_base_seleccionada)
-    ]
+    # Validar que las fechas seleccionadas existen en los datos
+    fecha_base_valida = fecha_base_seleccionada in fechas_base
+    fecha_comparar_valida = fecha_comparar_seleccionada in fechas_comparar
     
-    datos_dia_comparar = df_filtrado[
-        (df_filtrado["anio"] == año_comparar) & 
-        (df_filtrado["fecha"].dt.date == fecha_comparar_seleccionada)
-    ]
+    if not fecha_base_valida:
+        st.warning(f"⚠️ No hay datos para el {fecha_base_seleccionada.strftime('%d/%m/%Y')} en {año_base}")
     
-    if not datos_dia_base.empty and not datos_dia_comparar.empty:
+    if not fecha_comparar_valida:
+        st.warning(f"⚠️ No hay datos para el {fecha_comparar_seleccionada.strftime('%d/%m/%Y')} en {año_comparar}")
+    
+    if fecha_base_valida and fecha_comparar_valida:
+        # Obtener datos para las fechas seleccionadas
+        datos_dia_base = df_filtrado[
+            (df_filtrado["anio"] == año_base) & 
+            (df_filtrado["fecha"].dt.date == fecha_base_seleccionada)
+        ]
+        
+        datos_dia_comparar = df_filtrado[
+            (df_filtrado["anio"] == año_comparar) & 
+            (df_filtrado["fecha"].dt.date == fecha_comparar_seleccionada)
+        ]
+        
         # Calcular totales por día
         total_base = {
             "venta": datos_dia_base["venta"].sum(),
@@ -455,51 +498,61 @@ else:
         
         # Mostrar comparación día a día
         st.write("---")
-        st.subheader(f"Comparación: {fecha_base_seleccionada.strftime('%d/%m/%Y')} vs {fecha_comparar_seleccionada.strftime('%d/%m/%Y')}")
+        
+        # Formatear fechas para mostrar
+        meses_es = {
+            1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+            7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+        }
+        
+        fecha_base_str = f"{fecha_base_seleccionada.day} de {meses_es[fecha_base_seleccionada.month]} de {año_base}"
+        fecha_comparar_str = f"{fecha_comparar_seleccionada.day} de {meses_es[fecha_comparar_seleccionada.month]} de {año_comparar}"
+        
+        st.subheader(f"Comparación: {fecha_base_str} vs {fecha_comparar_str}")
         
         col_dia_metric1, col_dia_metric2, col_dia_metric3, col_dia_metric4 = st.columns(4)
         
         with col_dia_metric1:
             delta_ventas_dia = ((total_comparar['venta'] - total_base['venta'])/total_base['venta']*100) if total_base['venta'] > 0 else None
             st.metric(
-                f"Ventas {fecha_comparar_seleccionada.strftime('%d/%m')}",
+                f"Ventas {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
                 f"${total_comparar['venta']:,.0f}",
-                delta=f"{delta_ventas_dia:.1f}% vs {fecha_base_seleccionada.strftime('%d/%m')}" if delta_ventas_dia is not None else "Sin datos",
+                delta=f"{delta_ventas_dia:.1f}%" if delta_ventas_dia is not None else "Sin datos",
                 delta_color="normal" if delta_ventas_dia is not None else "off"
             )
-            st.caption(f"{fecha_base_seleccionada.strftime('%d/%m')}: ${total_base['venta']:,.0f}")
+            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: ${total_base['venta']:,.0f}")
         
         with col_dia_metric2:
             delta_entradas_dia = ((total_comparar['entradas'] - total_base['entradas'])/total_base['entradas']*100) if total_base['entradas'] > 0 else None
             st.metric(
-                f"Entradas {fecha_comparar_seleccionada.strftime('%d/%m')}",
+                f"Entradas {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
                 f"{total_comparar['entradas']:,.0f}",
-                delta=f"{delta_entradas_dia:.1f}% vs {fecha_base_seleccionada.strftime('%d/%m')}" if delta_entradas_dia is not None else "Sin datos",
+                delta=f"{delta_entradas_dia:.1f}%" if delta_entradas_dia is not None else "Sin datos",
                 delta_color="normal" if delta_entradas_dia is not None else "off"
             )
-            st.caption(f"{fecha_base_seleccionada.strftime('%d/%m')}: {total_base['entradas']:,.0f}")
+            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: {total_base['entradas']:,.0f}")
         
         with col_dia_metric3:
             delta_ticket_dia = ((ticket_prom_comparar - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
             st.metric(
-                f"Ticket Prom. {fecha_comparar_seleccionada.strftime('%d/%m')}",
+                f"Ticket Prom. {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
                 f"${ticket_prom_comparar:,.2f}",
-                delta=f"{delta_ticket_dia:.1f}% vs {fecha_base_seleccionada.strftime('%d/%m')}" if delta_ticket_dia is not None else "Sin datos",
+                delta=f"{delta_ticket_dia:.1f}%" if delta_ticket_dia is not None else "Sin datos",
                 delta_color="normal" if delta_ticket_dia is not None else "off"
             )
-            st.caption(f"{fecha_base_seleccionada.strftime('%d/%m')}: ${ticket_prom_base:,.2f}")
+            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: ${ticket_prom_base:,.2f}")
         
         with col_dia_metric4:
             tasa_base_dia = datos_dia_base["tasa_conversion"].mean() if not datos_dia_base.empty else 0
             tasa_comparar_dia = datos_dia_comparar["tasa_conversion"].mean() if not datos_dia_comparar.empty else 0
             delta_tasa_dia = tasa_comparar_dia - tasa_base_dia if tasa_base_dia > 0 else None
             st.metric(
-                f"Tasa Conv. {fecha_comparar_seleccionada.strftime('%d/%m')}",
+                f"Tasa Conv. {fecha_comparar_seleccionada.day}/{fecha_comparar_seleccionada.month}",
                 f"{tasa_comparar_dia:.2f}%",
-                delta=f"{delta_tasa_dia:.2f} pp vs {fecha_base_seleccionada.strftime('%d/%m')}" if delta_tasa_dia is not None else "Sin datos",
+                delta=f"{delta_tasa_dia:.2f} pp" if delta_tasa_dia is not None else "Sin datos",
                 delta_color="normal" if delta_tasa_dia is not None else "off"
             )
-            st.caption(f"{fecha_base_seleccionada.strftime('%d/%m')}: {tasa_base_dia:.2f}%")
+            st.caption(f"{fecha_base_seleccionada.day}/{fecha_base_seleccionada.month}: {tasa_base_dia:.2f}%")
         
         # Mostrar desglose por sección para el día seleccionado
         with st.expander(f"📊 Ver desglose por sección"):
@@ -511,22 +564,35 @@ else:
                 datos_base_sec = datos_dia_base[datos_dia_base["secciones"] == seccion]
                 datos_comparar_sec = datos_dia_comparar[datos_dia_comparar["secciones"] == seccion]
                 
+                # Calcular variación si hay datos en ambos
+                if not datos_base_sec.empty and not datos_comparar_sec.empty:
+                    venta_base = datos_base_sec['venta'].sum()
+                    venta_comparar = datos_comparar_sec['venta'].sum()
+                    variacion = ((venta_comparar - venta_base) / venta_base * 100) if venta_base > 0 else 0
+                    variacion_str = f"{variacion:.1f}%"
+                else:
+                    variacion_str = "N/A"
+                
                 fila = {
                     "Sección": seccion,
                     f"Venta {año_base}": f"${datos_base_sec['venta'].sum():,.0f}" if not datos_base_sec.empty else "Sin datos",
                     f"Venta {año_comparar}": f"${datos_comparar_sec['venta'].sum():,.0f}" if not datos_comparar_sec.empty else "Sin datos",
-                    f"Entradas {año_base}": f"{datos_base_sec['entradas'].sum():,.0f}" if not datos_base_sec.empty else "Sin datos",
-                    f"Entradas {año_comparar}": f"{datos_comparar_sec['entradas'].sum():,.0f}" if not datos_comparar_sec.empty else "Sin datos",
+                    "Variación": variacion_str
                 }
                 data_secciones.append(fila)
             
             if data_secciones:
-                st.dataframe(pd.DataFrame(data_secciones), use_container_width=True)
-    else:
-        if datos_dia_base.empty:
-            st.warning(f"No hay datos para {fecha_base_seleccionada.strftime('%d/%m/%Y')}")
-        if datos_dia_comparar.empty:
-            st.warning(f"No hay datos para {fecha_comparar_seleccionada.strftime('%d/%m/%Y')}")
+                df_secciones = pd.DataFrame(data_secciones)
+                st.dataframe(df_secciones, use_container_width=True)
+                
+                # Mostrar totales del día
+                st.write("---")
+                st.write("**Totales del día:**")
+                col_total1, col_total2 = st.columns(2)
+                with col_total1:
+                    st.write(f"**{año_base}:** ${total_base['venta']:,.0f} | Entradas: {total_base['entradas']:,.0f}")
+                with col_total2:
+                    st.write(f"**{año_comparar}:** ${total_comparar['venta']:,.0f} | Entradas: {total_comparar['entradas']:,.0f}")
 
 # ---------- ANÁLISIS POR SECCIÓN ----------
 st.subheader(f"📊 Comparación por Sección: {año_base} vs {año_comparar}")
