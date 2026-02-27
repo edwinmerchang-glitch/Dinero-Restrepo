@@ -4,12 +4,32 @@ import sqlite3
 from datetime import datetime
 import os
 import plotly.express as px
+import locale
+
+# Intentar configurar locale en español
+try:
+    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'Spanish_Spain.1252')
+    except:
+        pass  # Si no funciona, usaremos los nombres en español manualmente
 
 st.set_page_config(
     page_title="VentasPro Analytics", 
     page_icon="📊",
     layout="wide"
 )
+
+# Diccionario de meses en español
+MESES_ES = {
+    1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
+    5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
+    9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+}
+
+# Diccionario de días en español
+DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 # ---------- ESTILO LIMPIO Y PROFESIONAL ----------
 st.markdown("""
@@ -105,8 +125,34 @@ st.markdown("""
         font-size: 0.9rem;
         border-top: 1px solid #e9ecef;
     }
+    
+    /* Calendario en español */
+    .stDateInput label {
+        font-weight: 500;
+    }
+    
+    /* Personalizar el calendario desplegable */
+    div[data-baseweb="calendar"] {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    div[data-baseweb="calendar"] span[aria-label*="day"] {
+        text-transform: capitalize;
+    }
+    
+    /* Mes y año en el calendario */
+    div[data-baseweb="calendar"] div[role="presentation"] {
+        text-transform: capitalize;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# Función para formatear fechas en español
+def formato_fecha_es(fecha):
+    """Formatea una fecha en español"""
+    if isinstance(fecha, str):
+        fecha = pd.to_datetime(fecha)
+    return f"{fecha.day} de {MESES_ES[fecha.month]} de {fecha.year}"
 
 # ---------- DB ----------
 DB_DIR = "data"
@@ -246,18 +292,40 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Rango de fechas
+    # Rango de fechas con formato español
+    st.markdown("#### 📅 Rango de fechas")
+    
     df["fecha"] = pd.to_datetime(df["fecha"])
     fecha_min = df["fecha"].min().date()
     fecha_max = df["fecha"].max().date()
     
-    fecha_inicio = st.date_input("Fecha inicio", fecha_min)
-    fecha_fin = st.date_input("Fecha fin", fecha_max)
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input(
+            "Desde",
+            fecha_min,
+            min_value=fecha_min,
+            max_value=fecha_max,
+            help="Selecciona la fecha inicial"
+        )
+    with col2:
+        fecha_fin = st.date_input(
+            "Hasta",
+            fecha_max,
+            min_value=fecha_min,
+            max_value=fecha_max,
+            help="Selecciona la fecha final"
+        )
+    
+    # Mostrar fechas seleccionadas en español
+    st.caption(f"📆 {formato_fecha_es(fecha_inicio)} → {formato_fecha_es(fecha_fin)}")
+    
+    st.markdown("---")
     
     # Secciones
     secciones = df["secciones"].unique()
     secciones_seleccionadas = st.multiselect(
-        "Secciones",
+        "🏷️ Secciones",
         options=secciones,
         default=secciones.tolist()
     )
@@ -272,8 +340,8 @@ with st.sidebar:
     )
     df_filtrado = df[mask]
     
-    st.metric("Registros filtrados", f"{len(df_filtrado):,}")
-    st.caption(f"Total BD: {len(df):,}")
+    st.metric("📋 Registros filtrados", f"{len(df_filtrado):,}")
+    st.caption(f"Total en BD: {len(df):,} registros")
 
 # ---------- MÉTRICAS PRINCIPALES ----------
 st.subheader("📈 Métricas Principales")
@@ -362,7 +430,7 @@ with col4:
 # ---------- ANÁLISIS VISUAL ----------
 st.subheader("📊 Análisis Visual")
 
-tab1, tab2, tab3 = st.tabs(["📈 Evolución", "🏷️ Por Sección", "📋 Detalle"])
+tab1, tab2, tab3 = st.tabs(["📈 Evolución Mensual", "🏷️ Por Sección", "📋 Detalle"])
 
 with tab1:
     # Gráfico de evolución
@@ -370,10 +438,29 @@ with tab1:
     
     if not df_graf.empty:
         df_graf["mes"] = df_graf["fecha"].dt.month
-        df_mensual = df_graf.groupby(["anio", "mes"])["venta"].sum().reset_index()
+        df_graf["nombre_mes"] = df_graf["mes"].map(MESES_ES)
+        df_mensual = df_graf.groupby(["anio", "mes", "nombre_mes"])["venta"].sum().reset_index()
         
-        pivot = df_mensual.pivot(index="mes", columns="anio", values="venta").fillna(0)
-        st.line_chart(pivot)
+        # Ordenar por mes
+        df_mensual = df_mensual.sort_values("mes")
+        
+        # Crear gráfico con Plotly
+        fig = px.line(
+            df_mensual,
+            x="nombre_mes",
+            y="venta",
+            color="anio",
+            title=f"Evolución de Ventas {año_base} vs {año_comparar}",
+            labels={"nombre_mes": "Mes", "venta": "Ventas ($)", "anio": "Año"},
+            color_discrete_sequence=['#FF6B6B', '#4ECDC4']
+        )
+        fig.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font_color='#212529',
+            xaxis_tickangle=-45
+        )
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No hay datos para mostrar")
 
@@ -401,13 +488,38 @@ with tab2:
             st.dataframe(pd.DataFrame(datos_seccion), use_container_width=True, hide_index=True)
 
 with tab3:
-    # Datos detallados
+    # Datos detallados con formato español
     if not df_filtrado.empty:
+        df_detalle = df_filtrado.sort_values(["anio", "fecha"], ascending=[False, False]).copy()
+        df_detalle["fecha_str"] = pd.to_datetime(df_detalle["fecha"]).apply(formato_fecha_es)
+        
         st.dataframe(
-            df_filtrado.sort_values(["anio", "fecha"], ascending=False),
+            df_detalle[["fecha_str", "secciones", "entradas", "venta", "tickets", 
+                       "articulos", "ticket_promedio", "tasa_conversion", "anio"]],
+            column_config={
+                "fecha_str": "Fecha",
+                "secciones": "Sección",
+                "entradas": "Entradas",
+                "venta": st.column_config.NumberColumn("Venta", format="$%d"),
+                "tickets": "Tickets",
+                "articulos": "Artículos",
+                "ticket_promedio": st.column_config.NumberColumn("Ticket Prom.", format="$%.2f"),
+                "tasa_conversion": st.column_config.NumberColumn("Tasa Conv.", format="%.2f%%"),
+                "anio": "Año"
+            },
             use_container_width=True,
             hide_index=True
         )
+
+# ---------- RESUMEN DEL PERÍODO ----------
+with st.expander("📅 Resumen del período seleccionado"):
+    st.markdown(f"""
+    **Período analizado:** {formato_fecha_es(fecha_inicio)} → {formato_fecha_es(fecha_fin)}
+    
+    - **Años comparados:** {año_base} vs {año_comparar}
+    - **Secciones incluidas:** {', '.join(secciones_seleccionadas)}
+    - **Total de registros:** {len(df_filtrado):,}
+    """)
 
 # ---------- PIE DE PÁGINA ----------
 st.markdown("---")
