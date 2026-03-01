@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date  # Añadido 'date' aquí
 import os
 import plotly.express as px
 import plotly.graph_objects as go
@@ -474,7 +474,7 @@ else:
     else:
         periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
 
-# ... (el resto del código permanece igual) ...
+# ... (el resto del código permanece igual) ...	
 
 # ---------- KPIS CON PRESUPUESTO ----------
 st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
