@@ -204,6 +204,8 @@ def cargar_datos():
     if conn is not None:
         try:
             df = pd.read_sql("SELECT * FROM ventas", conn)
+            # Convertir fecha a datetime
+            df["fecha"] = pd.to_datetime(df["fecha"])
             return df
         except sqlite3.Error as e:
             st.error(f"Error al cargar datos: {e}")
@@ -280,35 +282,39 @@ with st.sidebar:
         st.markdown(f"**{año_base}**")
         df_base_year = df[df["anio"] == año_base]
         if not df_base_year.empty:
-            min_fecha_base = df_base_year["fecha"].min()
-            max_fecha_base = df_base_year["fecha"].max()
+            min_fecha_base = df_base_year["fecha"].min().date()
+            max_fecha_base = df_base_year["fecha"].max().date()
             
             col_fecha_base1, col_fecha_base2 = st.columns(2)
             with col_fecha_base1:
                 fecha_inicio_base = st.date_input(
                     "Fecha inicial",
-                    value=min_fecha_base.date(),
-                    min_value=min_fecha_base.date(),
-                    max_value=max_fecha_base.date(),
+                    value=min_fecha_base,
+                    min_value=min_fecha_base,
+                    max_value=max_fecha_base,
                     key="fecha_inicio_base"
                 )
             with col_fecha_base2:
                 fecha_fin_base = st.date_input(
                     "Fecha final",
-                    value=max_fecha_base.date(),
-                    min_value=min_fecha_base.date(),
-                    max_value=max_fecha_base.date(),
+                    value=max_fecha_base,
+                    min_value=min_fecha_base,
+                    max_value=max_fecha_base,
                     key="fecha_fin_base"
                 )
             
-            fecha_inicio_base = pd.Timestamp(fecha_inicio_base)
-            fecha_fin_base = pd.Timestamp(fecha_fin_base)
+            # Convertir a datetime para filtrado
+            fecha_inicio_base_dt = pd.Timestamp(fecha_inicio_base)
+            fecha_fin_base_dt = pd.Timestamp(fecha_fin_base)
             
-            if fecha_inicio_base > fecha_fin_base:
+            if fecha_inicio_base_dt > fecha_fin_base_dt:
                 st.error("La fecha inicial debe ser menor o igual a la fecha final")
+                fecha_inicio_base_dt, fecha_fin_base_dt = fecha_fin_base_dt, fecha_inicio_base_dt
                 fecha_inicio_base, fecha_fin_base = fecha_fin_base, fecha_inicio_base
         else:
             st.warning(f"No hay datos para {año_base}")
+            fecha_inicio_base_dt = None
+            fecha_fin_base_dt = None
             fecha_inicio_base = None
             fecha_fin_base = None
         
@@ -318,35 +324,39 @@ with st.sidebar:
         st.markdown(f"**{año_comparar}**")
         df_comp_year = df[df["anio"] == año_comparar]
         if not df_comp_year.empty:
-            min_fecha_comp = df_comp_year["fecha"].min()
-            max_fecha_comp = df_comp_year["fecha"].max()
+            min_fecha_comp = df_comp_year["fecha"].min().date()
+            max_fecha_comp = df_comp_year["fecha"].max().date()
             
             col_fecha_comp1, col_fecha_comp2 = st.columns(2)
             with col_fecha_comp1:
                 fecha_inicio_comp = st.date_input(
                     "Fecha inicial",
-                    value=min_fecha_comp.date(),
-                    min_value=min_fecha_comp.date(),
-                    max_value=max_fecha_comp.date(),
+                    value=min_fecha_comp,
+                    min_value=min_fecha_comp,
+                    max_value=max_fecha_comp,
                     key="fecha_inicio_comp"
                 )
             with col_fecha_comp2:
                 fecha_fin_comp = st.date_input(
                     "Fecha final",
-                    value=max_fecha_comp.date(),
-                    min_value=min_fecha_comp.date(),
-                    max_value=max_fecha_comp.date(),
+                    value=max_fecha_comp,
+                    min_value=min_fecha_comp,
+                    max_value=max_fecha_comp,
                     key="fecha_fin_comp"
                 )
             
-            fecha_inicio_comp = pd.Timestamp(fecha_inicio_comp)
-            fecha_fin_comp = pd.Timestamp(fecha_fin_comp)
+            # Convertir a datetime para filtrado
+            fecha_inicio_comp_dt = pd.Timestamp(fecha_inicio_comp)
+            fecha_fin_comp_dt = pd.Timestamp(fecha_fin_comp)
             
-            if fecha_inicio_comp > fecha_fin_comp:
+            if fecha_inicio_comp_dt > fecha_fin_comp_dt:
                 st.error("La fecha inicial debe ser menor o igual a la fecha final")
+                fecha_inicio_comp_dt, fecha_fin_comp_dt = fecha_fin_comp_dt, fecha_inicio_comp_dt
                 fecha_inicio_comp, fecha_fin_comp = fecha_fin_comp, fecha_inicio_comp
         else:
             st.warning(f"No hay datos para {año_comparar}")
+            fecha_inicio_comp_dt = None
+            fecha_fin_comp_dt = None
             fecha_inicio_comp = None
             fecha_fin_comp = None
     
@@ -355,25 +365,24 @@ with st.sidebar:
         st.markdown("#### 📅 Período común")
         
         # Preparar fechas globales
-        df["fecha"] = pd.to_datetime(df["fecha"])
-        fecha_min = df["fecha"].min()
-        fecha_max = df["fecha"].max()
+        fecha_min = df["fecha"].min().date()
+        fecha_max = df["fecha"].max().date()
         
         col_fecha1, col_fecha2 = st.columns(2)
         with col_fecha1:
             fecha_inicio_sel = st.date_input(
                 "Fecha inicial",
-                value=fecha_min.date(),
-                min_value=fecha_min.date(),
-                max_value=fecha_max.date(),
+                value=fecha_min,
+                min_value=fecha_min,
+                max_value=fecha_max,
                 key="fecha_inicio_comun"
             )
         with col_fecha2:
             fecha_fin_sel = st.date_input(
                 "Fecha final",
-                value=fecha_max.date(),
-                min_value=fecha_min.date(),
-                max_value=fecha_max.date(),
+                value=fecha_max,
+                min_value=fecha_min,
+                max_value=fecha_max,
                 key="fecha_fin_comun"
             )
         
@@ -425,36 +434,30 @@ with st.sidebar:
     st.markdown("#### 📊 Filtros activos")
     
     if filtros_independientes:
+        filter_html = '<div class="active-filters">'
         if fecha_inicio_base and fecha_fin_base:
-            st.markdown(f"""
-            <div class="active-filters">
-                <span class="filter-badge">📅 {año_base}: {fecha_inicio_base.strftime('%d/%m/%Y')} - {fecha_fin_base.strftime('%d/%m/%Y')}</span>
-            """, unsafe_allow_html=True)
+            filter_html += f'<span class="filter-badge">📅 {año_base}: {fecha_inicio_base.strftime("%d/%m/%Y")} - {fecha_fin_base.strftime("%d/%m/%Y")}</span>'
         
         if fecha_inicio_comp and fecha_fin_comp:
-            st.markdown(f"""
-                <span class="filter-badge">📅 {año_comparar}: {fecha_inicio_comp.strftime('%d/%m/%Y')} - {fecha_fin_comp.strftime('%d/%m/%Y')}</span>
-            """, unsafe_allow_html=True)
+            filter_html += f'<span class="filter-badge">📅 {año_comparar}: {fecha_inicio_comp.strftime("%d/%m/%Y")} - {fecha_fin_comp.strftime("%d/%m/%Y")}</span>'
     else:
-        st.markdown(f"""
+        filter_html = f'''
         <div class="active-filters">
-            <span class="filter-badge">📅 {fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}</span>
+            <span class="filter-badge">📅 {fecha_inicio.strftime("%d/%m/%Y")} - {fecha_fin.strftime("%d/%m/%Y")}</span>
             <span class="filter-badge">📋 {dias_en_rango} días</span>
-        """, unsafe_allow_html=True)
+        '''
     
-    st.markdown(f"""
-        <span class="filter-badge">🏷️ {len(secciones_seleccionadas)} secciones</span>
-    </div>
-    """, unsafe_allow_html=True)
+    filter_html += f'<span class="filter-badge">🏷️ {len(secciones_seleccionadas)} secciones</span></div>'
+    st.markdown(filter_html, unsafe_allow_html=True)
 
 # ---------- APLICAR FILTROS ----------
 if filtros_independientes:
     # Filtrar con períodos independientes
-    if fecha_inicio_base and fecha_fin_base:
+    if fecha_inicio_base_dt is not None and fecha_fin_base_dt is not None:
         datos_base = df[
             (df["anio"] == año_base) &
-            (df["fecha"] >= fecha_inicio_base) &
-            (df["fecha"] <= fecha_fin_base) &
+            (df["fecha"] >= fecha_inicio_base_dt) &
+            (df["fecha"] <= fecha_fin_base_dt) &
             (df["secciones"].isin(secciones_seleccionadas))
         ]
         periodo_desc_base = f"{fecha_inicio_base.strftime('%d/%m/%Y')} - {fecha_fin_base.strftime('%d/%m/%Y')}"
@@ -462,11 +465,11 @@ if filtros_independientes:
         datos_base = pd.DataFrame()
         periodo_desc_base = "sin datos"
     
-    if fecha_inicio_comp and fecha_fin_comp:
+    if fecha_inicio_comp_dt is not None and fecha_fin_comp_dt is not None:
         datos_comparar = df[
             (df["anio"] == año_comparar) &
-            (df["fecha"] >= fecha_inicio_comp) &
-            (df["fecha"] <= fecha_fin_comp) &
+            (df["fecha"] >= fecha_inicio_comp_dt) &
+            (df["fecha"] <= fecha_fin_comp_dt) &
             (df["secciones"].isin(secciones_seleccionadas))
         ]
         periodo_desc_comp = f"{fecha_inicio_comp.strftime('%d/%m/%Y')} - {fecha_fin_comp.strftime('%d/%m/%Y')}"
@@ -644,6 +647,7 @@ if not datos_base.empty and not datos_comparar.empty:
 # ---------- RESTO DEL CÓDIGO (GRÁFICOS, ETC) ----------
 # Aquí va todo el código de gráficos que ya tenías antes...
 # (Mantén todo el código de gráficos y visualizaciones que ya funcionaba)
+# Por brevedad, no incluyo todos los gráficos aquí, pero debes mantenerlos
 
 # ---------- ADMINISTRACIÓN ----------
 with st.expander("⚙️ Administración", expanded=False):
