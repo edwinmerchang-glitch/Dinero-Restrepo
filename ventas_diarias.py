@@ -808,58 +808,224 @@ else:
     else:
         st.info(f"Solo hay datos para {año_base} en el {periodo_desc}. Selecciona otro año para comparar.")
 
-# ---------- COMPARACIÓN DÍA A DÍA ----------
+# ---------- COMPARACIÓN DÍA A DÍA MEJORADA ----------
 st.markdown(f'<div class="section-title">📅 Comparación Día a Día</div>', unsafe_allow_html=True)
 
 if not datos_base.empty and not datos_comparar.empty:
-    # Selectores de fecha con diseño mejorado
-    col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
     
-    with col_cal1:
-        st.markdown(f"**{año_base}**")
-        fechas_base = sorted(datos_base["fecha"].dt.date.unique())
-        fecha_base = st.date_input(
-            "Selecciona fecha",
-            value=fechas_base[0] if fechas_base else None,
-            min_value=min(fechas_base) if fechas_base else None,
-            max_value=max(fechas_base) if fechas_base else None,
-            key="fecha_base",
-            format="DD/MM/YYYY"
-        )
+    # Explicación de la funcionalidad
+    st.info("""
+    **🔍 Compara un día específico de cada año**
     
-    with col_cal2:
-        st.markdown(f"**{año_comparar}**")
-        fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
-        fecha_comp = st.date_input(
-            "Selecciona fecha",
-            value=fechas_comp[0] if fechas_comp else None,
-            min_value=min(fechas_comp) if fechas_comp else None,
-            max_value=max(fechas_comp) if fechas_comp else None,
-            key="fecha_comp",
-            format="DD/MM/YYYY"
-        )
+    Selecciona una fecha de cada año para ver cómo se comparan las métricas. 
+    Puedes buscar el mismo día (mismo mes y día) en ambos años con el botón "🔄 Mismo día".
+    """)
     
-    with col_cal3:
-        st.markdown("**Acción**")
-        if st.button("🔄 Mismo día", use_container_width=True):
-            # Buscar mismo mes/día
-            for f_base in fechas_base:
-                for f_comp in fechas_comp:
-                    if f_base.month == f_comp.month and f_base.day == f_comp.day:
-                        fecha_base = f_base
-                        fecha_comp = f_comp
-                        st.success(f"✓ {f_base.day}/{f_base.month} encontrado")
+    # Crear pestañas para diferentes modos de comparación
+    tab_dia1, tab_dia2, tab_dia3 = st.tabs(["📅 Comparador de Fechas", "📊 Calendario", "📈 Día más vendido"])
+    
+    with tab_dia1:
+        # Selectores de fecha con diseño mejorado
+        col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
+        
+        with col_cal1:
+            st.markdown(f"### **{año_base}**")
+            fechas_base = sorted(datos_base["fecha"].dt.date.unique())
+            
+            # Selector con formato mejorado
+            fecha_base = st.selectbox(
+                "Selecciona fecha",
+                options=fechas_base,
+                format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+                key="fecha_base_select"
+            )
+            
+            # Mostrar día de la semana
+            if fecha_base:
+                dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+                dia_semana = dias_semana[fecha_base.weekday()]
+                st.caption(f"📆 {dia_semana}")
+        
+        with col_cal2:
+            st.markdown(f"### **{año_comparar}**")
+            fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
+            
+            fecha_comp = st.selectbox(
+                "Selecciona fecha",
+                options=fechas_comp,
+                format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+                key="fecha_comp_select"
+            )
+            
+            # Mostrar día de la semana
+            if fecha_comp:
+                dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+                dia_semana = dias_semana[fecha_comp.weekday()]
+                st.caption(f"📆 {dia_semana}")
+        
+        with col_cal3:
+            st.markdown("### **Acciones**")
+            
+            # Botón para buscar mismo día
+            if st.button("🔄 Mismo día", use_container_width=True, type="primary"):
+                # Buscar mismo mes/día
+                fecha_encontrada = False
+                for f_base in fechas_base:
+                    for f_comp in fechas_comp:
+                        if f_base.month == f_comp.month and f_base.day == f_comp.day:
+                            fecha_base = f_base
+                            fecha_comp = f_comp
+                            fecha_encontrada = True
+                            st.success(f"✓ {f_base.strftime('%d de %B')} encontrado en ambos años")
+                            st.rerun()
+                            break
+                    if fecha_encontrada:
                         break
-                else:
-                    continue
-                break
+                
+                if not fecha_encontrada:
+                    st.warning("No se encontró el mismo día en ambos años")
+            
+            # Botón para fechas más recientes
+            if st.button("📅 Últimos datos", use_container_width=True):
+                fecha_base = fechas_base[-1] if fechas_base else None
+                fecha_comp = fechas_comp[-1] if fechas_comp else None
+                st.rerun()
     
-    # Mostrar comparación del día
-    if fecha_base and fecha_comp:
+    with tab_dia2:
+        # Vista de calendario simplificada
+        st.markdown("### 📆 Calendario comparativo")
+        
+        col_cal_left, col_cal_right = st.columns(2)
+        
+        with col_cal_left:
+            st.markdown(f"**{año_base}**")
+            # Crear un DataFrame con resumen por día para el año base
+            df_base_dias = datos_base.groupby(datos_base['fecha'].dt.date).agg({
+                'venta': 'sum',
+                'entradas': 'sum',
+                'tickets': 'sum'
+            }).reset_index()
+            df_base_dias.columns = ['fecha', 'venta', 'entradas', 'tickets']
+            df_base_dias['venta_mm'] = df_base_dias['venta'] / 1_000_000
+            
+            # Mostrar tabla con últimos 10 días
+            st.dataframe(
+                df_base_dias.sort_values('fecha', ascending=False).head(10)
+                .style.format({
+                    'fecha': lambda x: x.strftime('%d/%m/%Y'),
+                    'venta': '${:,.0f}',
+                    'venta_mm': '${:.1f}M',
+                    'entradas': '{:,.0f}',
+                    'tickets': '{:,.0f}'
+                }),
+                use_container_width=True,
+                height=300
+            )
+        
+        with col_cal_right:
+            st.markdown(f"**{año_comparar}**")
+            # Crear un DataFrame con resumen por día para el año comparar
+            df_comp_dias = datos_comparar.groupby(datos_comparar['fecha'].dt.date).agg({
+                'venta': 'sum',
+                'entradas': 'sum',
+                'tickets': 'sum'
+            }).reset_index()
+            df_comp_dias.columns = ['fecha', 'venta', 'entradas', 'tickets']
+            df_comp_dias['venta_mm'] = df_comp_dias['venta'] / 1_000_000
+            
+            # Mostrar tabla con últimos 10 días
+            st.dataframe(
+                df_comp_dias.sort_values('fecha', ascending=False).head(10)
+                .style.format({
+                    'fecha': lambda x: x.strftime('%d/%m/%Y'),
+                    'venta': '${:,.0f}',
+                    'venta_mm': '${:.1f}M',
+                    'entradas': '{:,.0f}',
+                    'tickets': '{:,.0f}'
+                }),
+                use_container_width=True,
+                height=300
+            )
+    
+    with tab_dia3:
+        # Análisis de días destacados
+        st.markdown("### 🏆 Días destacados")
+        
+        col_top1, col_top2, col_top3 = st.columns(3)
+        
+        with col_top1:
+            # Día con más ventas en año base
+            if not datos_base.empty:
+                top_venta_base = datos_base.loc[datos_base['venta'].idxmax()]
+                st.metric(
+                    f"💰 Más ventas {año_base}",
+                    f"${top_venta_base['venta']:,.0f}",
+                    top_venta_base['fecha'].strftime('%d/%m/%Y')
+                )
+        
+        with col_top2:
+            # Día con más entradas en año base
+            if not datos_base.empty:
+                top_entradas_base = datos_base.loc[datos_base['entradas'].idxmax()]
+                st.metric(
+                    f"👥 Más entradas {año_base}",
+                    f"{top_entradas_base['entradas']:,.0f}",
+                    top_entradas_base['fecha'].strftime('%d/%m/%Y')
+                )
+        
+        with col_top3:
+            # Día con mejor ticket promedio en año base
+            if not datos_base.empty:
+                top_ticket_base = datos_base.loc[datos_base['ticket_promedio'].idxmax()]
+                st.metric(
+                    f"💳 Mejor ticket {año_base}",
+                    f"${top_ticket_base['ticket_promedio']:,.2f}",
+                    top_ticket_base['fecha'].strftime('%d/%m/%Y')
+                )
+        
+        st.markdown("---")
+        
+        col_top4, col_top5, col_top6 = st.columns(3)
+        
+        with col_top4:
+            # Día con más ventas en año comparar
+            if not datos_comparar.empty:
+                top_venta_comp = datos_comparar.loc[datos_comparar['venta'].idxmax()]
+                st.metric(
+                    f"💰 Más ventas {año_comparar}",
+                    f"${top_venta_comp['venta']:,.0f}",
+                    top_venta_comp['fecha'].strftime('%d/%m/%Y')
+                )
+        
+        with col_top5:
+            # Día con más entradas en año comparar
+            if not datos_comparar.empty:
+                top_entradas_comp = datos_comparar.loc[datos_comparar['entradas'].idxmax()]
+                st.metric(
+                    f"👥 Más entradas {año_comparar}",
+                    f"{top_entradas_comp['entradas']:,.0f}",
+                    top_entradas_comp['fecha'].strftime('%d/%m/%Y')
+                )
+        
+        with col_top6:
+            # Día con mejor ticket promedio en año comparar
+            if not datos_comparar.empty:
+                top_ticket_comp = datos_comparar.loc[datos_comparar['ticket_promedio'].idxmax()]
+                st.metric(
+                    f"💳 Mejor ticket {año_comparar}",
+                    f"${top_ticket_comp['ticket_promedio']:,.2f}",
+                    top_ticket_comp['fecha'].strftime('%d/%m/%Y')
+                )
+    
+    # Mostrar la comparación detallada si hay fechas seleccionadas
+    if 'fecha_base' in locals() and 'fecha_comp' in locals() and fecha_base and fecha_comp:
         datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
         datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
         
         if not datos_dia_base.empty and not datos_dia_comp.empty:
+            st.markdown("---")
+            st.markdown(f"## 📊 Comparación: {fecha_base.strftime('%d/%m/%Y')} vs {fecha_comp.strftime('%d/%m/%Y')}")
+            
             # Calcular métricas del día
             venta_base = datos_dia_base["venta"].sum()
             venta_comp = datos_dia_comp["venta"].sum()
@@ -874,230 +1040,72 @@ if not datos_base.empty and not datos_comparar.empty:
             tasa_base = datos_dia_base["tasa_conversion"].mean()
             tasa_comp = datos_dia_comp["tasa_conversion"].mean()
             
-            # Tarjetas de comparación diaria
+            # Tarjetas de comparación diaria con estilo mejorado
             col_d1, col_d2, col_d3, col_d4 = st.columns(4)
             
             delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
             with col_d1:
                 st.markdown(f"""
-                <div class="metric-card" style="padding: 1rem;">
-                    <h4 style="color: #666; margin: 0;">Ventas del día</h4>
-                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">${venta_comp:,.0f}</h3>
-                    <p style="color: {'#4caf50' if delta_venta and delta_venta > 0 else '#f44336' if delta_venta and delta_venta < 0 else '#666'};">
+                <div class="metric-card" style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h4 style="color: rgba(255,255,255,0.9); margin: 0;">Ventas del día</h4>
+                    <h3 style="color: white; margin: 0.5rem 0; font-size: 1.8rem;">${venta_comp:,.0f}</h3>
+                    <p style="color: {'#a5d6a7' if delta_venta and delta_venta > 0 else '#ef9a9a' if delta_venta and delta_venta < 0 else 'rgba(255,255,255,0.7)'}; margin: 0; font-weight: bold;">
                         {f'▲ {delta_venta:.1f}%' if delta_venta and delta_venta > 0 else f'▼ {abs(delta_venta):.1f}%' if delta_venta and delta_venta < 0 else '0%'}
                     </p>
-                    <p style="color: #999; font-size: 0.8rem;">{año_base}: ${venta_base:,.0f}</p>
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${venta_base:,.0f}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
             delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
             with col_d2:
                 st.markdown(f"""
-                <div class="metric-card" style="padding: 1rem;">
-                    <h4 style="color: #666; margin: 0;">Entradas del día</h4>
-                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">{entradas_comp:,.0f}</h3>
-                    <p style="color: {'#4caf50' if delta_ent and delta_ent > 0 else '#f44336' if delta_ent and delta_ent < 0 else '#666'};">
+                <div class="metric-card" style="padding: 1rem; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white;">
+                    <h4 style="color: rgba(255,255,255,0.9); margin: 0;">Entradas del día</h4>
+                    <h3 style="color: white; margin: 0.5rem 0; font-size: 1.8rem;">{entradas_comp:,.0f}</h3>
+                    <p style="color: {'#a5d6a7' if delta_ent and delta_ent > 0 else '#ef9a9a' if delta_ent and delta_ent < 0 else 'rgba(255,255,255,0.7)'}; margin: 0; font-weight: bold;">
                         {f'▲ {delta_ent:.1f}%' if delta_ent and delta_ent > 0 else f'▼ {abs(delta_ent):.1f}%' if delta_ent and delta_ent < 0 else '0%'}
                     </p>
-                    <p style="color: #999; font-size: 0.8rem;">{año_base}: {entradas_base:,.0f}</p>
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {entradas_base:,.0f}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
             delta_ticket = ((ticket_prom_comp - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
             with col_d3:
                 st.markdown(f"""
-                <div class="metric-card" style="padding: 1rem;">
-                    <h4 style="color: #666; margin: 0;">Ticket Promedio</h4>
-                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">${ticket_prom_comp:,.2f}</h3>
-                    <p style="color: {'#4caf50' if delta_ticket and delta_ticket > 0 else '#f44336' if delta_ticket and delta_ticket < 0 else '#666'};">
+                <div class="metric-card" style="padding: 1rem; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white;">
+                    <h4 style="color: rgba(255,255,255,0.9); margin: 0;">Ticket Promedio</h4>
+                    <h3 style="color: white; margin: 0.5rem 0; font-size: 1.8rem;">${ticket_prom_comp:,.2f}</h3>
+                    <p style="color: {'#a5d6a7' if delta_ticket and delta_ticket > 0 else '#ef9a9a' if delta_ticket and delta_ticket < 0 else 'rgba(255,255,255,0.7)'}; margin: 0; font-weight: bold;">
                         {f'▲ {delta_ticket:.1f}%' if delta_ticket and delta_ticket > 0 else f'▼ {abs(delta_ticket):.1f}%' if delta_ticket and delta_ticket < 0 else '0%'}
                     </p>
-                    <p style="color: #999; font-size: 0.8rem;">{año_base}: ${ticket_prom_base:,.2f}</p>
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${ticket_prom_base:,.2f}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
             delta_tasa = tasa_comp - tasa_base
             with col_d4:
                 st.markdown(f"""
-                <div class="metric-card" style="padding: 1rem;">
-                    <h4 style="color: #666; margin: 0;">Tasa Conversión</h4>
-                    <h3 style="color: #1f77b4; margin: 0.5rem 0;">{tasa_comp:.2f}%</h3>
-                    <p style="color: {'#4caf50' if delta_tasa > 0 else '#f44336' if delta_tasa < 0 else '#666'};">
+                <div class="metric-card" style="padding: 1rem; background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%); color: white;">
+                    <h4 style="color: rgba(255,255,255,0.9); margin: 0;">Tasa Conversión</h4>
+                    <h3 style="color: white; margin: 0.5rem 0; font-size: 1.8rem;">{tasa_comp:.2f}%</h3>
+                    <p style="color: {'#a5d6a7' if delta_tasa > 0 else '#ef9a9a' if delta_tasa < 0 else 'rgba(255,255,255,0.7)'}; margin: 0; font-weight: bold;">
                         {f'▲ {delta_tasa:.2f} pp' if delta_tasa > 0 else f'▼ {abs(delta_tasa):.2f} pp' if delta_tasa < 0 else '0 pp'}
                     </p>
-                    <p style="color: #999; font-size: 0.8rem;">{año_base}: {tasa_base:.2f}%</p>
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {tasa_base:.2f}%</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            # ----- GRÁFICOS PARA COMPARACIÓN DÍA A DÍA -----
-            st.markdown("### 📊 Análisis Visual del Día")
-            
-            # Crear pestañas para diferentes visualizaciones
-            tab_dia1, tab_dia2, tab_dia3 = st.tabs(["📊 Comparativa", "🥧 Distribución", "📈 Tendencia Horaria (simulada)"])
-            
-            with tab_dia1:
-                # Gráfico de barras comparativo por sección
-                secciones_dia = sorted(set(datos_dia_base["secciones"].unique()) | 
-                                     set(datos_dia_comp["secciones"].unique()))
+            # Comparación por hora (simulada)
+            with st.expander("📊 Ver análisis detallado por hora (simulado)", expanded=False):
+                st.info("""
+                **📈 Distribución horaria estimada**
                 
-                # Preparar datos para el gráfico
-                data_barras = []
-                for sec in secciones_dia:
-                    base_sec = datos_dia_base[datos_dia_base["secciones"] == sec]
-                    comp_sec = datos_dia_comp[datos_dia_comp["secciones"] == sec]
-                    
-                    venta_b = base_sec["venta"].sum() if not base_sec.empty else 0
-                    venta_c = comp_sec["venta"].sum() if not comp_sec.empty else 0
-                    
-                    data_barras.append({
-                        "Sección": sec,
-                        f"{año_base}": venta_b,
-                        f"{año_comparar}": venta_c
-                    })
+                Esta visualización estima cómo se distribuyen las ventas a lo largo del día basándose en el total de tickets.
+                Para tener datos reales por hora, el Excel debería incluir una columna con la hora de cada venta.
+                """)
                 
-                df_barras = pd.DataFrame(data_barras)
-                
-                if not df_barras.empty:
-                    fig_dia1 = go.Figure()
-                    
-                    fig_dia1.add_trace(go.Bar(
-                        name=str(año_base),
-                        x=df_barras['Sección'],
-                        y=df_barras[str(año_base)],
-                        marker_color='#1f77b4',
-                        text=df_barras[str(año_base)].apply(lambda x: f'${x:,.0f}'),
-                        textposition='outside',
-                        hovertemplate='<b>%{x}</b><br>' +
-                                     f'{año_base}: $%{{y:,.0f}}<br>' +
-                                     '<extra></extra>'
-                    ))
-                    
-                    fig_dia1.add_trace(go.Bar(
-                        name=str(año_comparar),
-                        x=df_barras['Sección'],
-                        y=df_barras[str(año_comparar)],
-                        marker_color='#ff7f0e',
-                        text=df_barras[str(año_comparar)].apply(lambda x: f'${x:,.0f}'),
-                        textposition='outside',
-                        hovertemplate='<b>%{x}</b><br>' +
-                                     f'{año_comparar}: $%{{y:,.0f}}<br>' +
-                                     '<extra></extra>'
-                    ))
-                    
-                    fig_dia1.update_layout(
-                        title=f'Comparación por Sección - {fecha_base.strftime("%d/%m/%Y")} vs {fecha_comp.strftime("%d/%m/%Y")}',
-                        xaxis=dict(title='Sección', tickangle=45),
-                        yaxis=dict(title='Ventas ($)', tickformat='$,.0f'),
-                        barmode='group',
-                        plot_bgcolor='white',
-                        paper_bgcolor='white',
-                        height=400,
-                        legend=dict(
-                            orientation='h',
-                            yanchor='bottom',
-                            y=1.02,
-                            xanchor='center',
-                            x=0.5
-                        )
-                    )
-                    
-                    st.plotly_chart(fig_dia1, use_container_width=True)
-            
-            with tab_dia2:
-                # Gráficos de pastel para distribución por sección
-                col_pie1, col_pie2 = st.columns(2)
-                
-                with col_pie1:
-                    # Pastel para año base
-                    df_pie_base = datos_dia_base.groupby('secciones')['venta'].sum().reset_index()
-                    if not df_pie_base.empty:
-                        fig_pie_base = go.Figure(data=[go.Pie(
-                            labels=df_pie_base['secciones'],
-                            values=df_pie_base['venta'],
-                            hole=0.4,
-                            marker_colors=px.colors.qualitative.Set3[:len(df_pie_base)],
-                            textinfo='label+percent',
-                            textposition='inside'
-                        )])
-                        
-                        fig_pie_base.update_layout(
-                            title=f'Distribución {año_base}',
-                            height=300,
-                            showlegend=False
-                        )
-                        
-                        st.plotly_chart(fig_pie_base, use_container_width=True)
-                
-                with col_pie2:
-                    # Pastel para año comparar
-                    df_pie_comp = datos_dia_comp.groupby('secciones')['venta'].sum().reset_index()
-                    if not df_pie_comp.empty:
-                        fig_pie_comp = go.Figure(data=[go.Pie(
-                            labels=df_pie_comp['secciones'],
-                            values=df_pie_comp['venta'],
-                            hole=0.4,
-                            marker_colors=px.colors.qualitative.Set3[:len(df_pie_comp)],
-                            textinfo='label+percent',
-                            textposition='inside'
-                        )])
-                        
-                        fig_pie_comp.update_layout(
-                            title=f'Distribución {año_comparar}',
-                            height=300,
-                            showlegend=False
-                        )
-                        
-                        st.plotly_chart(fig_pie_comp, use_container_width=True)
-                
-                # Métricas adicionales en columnas
-                col_metric1, col_metric2, col_metric3 = st.columns(3)
-                
-                with col_metric1:
-                    # Sección con mayor venta en año base
-                    if not datos_dia_base.empty:
-                        top_base = datos_dia_base.loc[datos_dia_base['venta'].idxmax()]
-                        st.metric(
-                            "🏆 Mejor sección (Base)",
-                            top_base['secciones'],
-                            f"${top_base['venta']:,.0f}"
-                        )
-                
-                with col_metric2:
-                    # Sección con mayor venta en año comparar
-                    if not datos_dia_comp.empty:
-                        top_comp = datos_dia_comp.loc[datos_dia_comp['venta'].idxmax()]
-                        st.metric(
-                            "🏆 Mejor sección (Actual)",
-                            top_comp['secciones'],
-                            f"${top_comp['venta']:,.0f}"
-                        )
-                
-                with col_metric3:
-                    # Comparación de secciones con mayor crecimiento
-                    crecimiento_secciones = []
-                    for sec in secciones_dia:
-                        venta_b = datos_dia_base[datos_dia_base['secciones'] == sec]['venta'].sum() if not datos_dia_base[datos_dia_base['secciones'] == sec].empty else 0
-                        venta_c = datos_dia_comp[datos_dia_comp['secciones'] == sec]['venta'].sum() if not datos_dia_comp[datos_dia_comp['secciones'] == sec].empty else 0
-                        if venta_b > 0:
-                            crecimiento = ((venta_c - venta_b)/venta_b*100)
-                            crecimiento_secciones.append((sec, crecimiento))
-                    
-                    if crecimiento_secciones:
-                        mejor_crecimiento = max(crecimiento_secciones, key=lambda x: x[1])
-                        st.metric(
-                            "🚀 Mayor crecimiento",
-                            mejor_crecimiento[0],
-                            f"{mejor_crecimiento[1]:.1f}%"
-                        )
-            
-            with tab_dia3:
-                # Gráfico de tendencia horaria (simulada - asumiendo distribución uniforme)
-                st.info("📊 Visualización de tendencia estimada (basada en distribución de tickets)")
-                
-                # Simular distribución horaria basada en tickets por sección
-                horas = list(range(9, 21))  # 9 AM a 8 PM
-                
-                # Distribución simulada (campana alrededor del mediodía)
+                # Simular distribución horaria
+                horas = list(range(9, 21))
                 distribucion = [0.02, 0.03, 0.05, 0.08, 0.12, 0.15, 0.15, 0.12, 0.10, 0.08, 0.06, 0.04]
                 
                 ventas_hora_base = [venta_base * d for d in distribucion]
@@ -1105,36 +1113,33 @@ if not datos_base.empty and not datos_comparar.empty:
                 
                 fig_horas = go.Figure()
                 
-                fig_horas.add_trace(go.Scatter(
+                fig_horas.add_trace(go.Bar(
+                    name=str(año_base),
                     x=[f"{h}:00" for h in horas],
                     y=ventas_hora_base,
-                    mode='lines+markers',
-                    name=str(año_base),
-                    line=dict(color='#1f77b4', width=3),
-                    marker=dict(size=8),
-                    fill='tozeroy',
-                    fillcolor='rgba(31, 119, 180, 0.1)'
+                    marker_color='#1f77b4',
+                    text=[f'${v/1000:.0f}K' for v in ventas_hora_base],
+                    textposition='inside',
+                    opacity=0.8
                 ))
                 
-                fig_horas.add_trace(go.Scatter(
+                fig_horas.add_trace(go.Bar(
+                    name=str(año_comparar),
                     x=[f"{h}:00" for h in horas],
                     y=ventas_hora_comp,
-                    mode='lines+markers',
-                    name=str(año_comparar),
-                    line=dict(color='#ff7f0e', width=3),
-                    marker=dict(size=8),
-                    fill='tozeroy',
-                    fillcolor='rgba(255, 127, 14, 0.1)'
+                    marker_color='#ff7f0e',
+                    text=[f'${v/1000:.0f}K' for v in ventas_hora_comp],
+                    textposition='inside',
+                    opacity=0.8
                 ))
                 
                 fig_horas.update_layout(
-                    title='Distribución Horaria Estimada de Ventas',
-                    xaxis=dict(title='Hora', tickangle=45),
+                    title='Distribución Horaria Estimada',
+                    xaxis=dict(title='Hora'),
                     yaxis=dict(title='Ventas ($)', tickformat='$,.0f'),
+                    barmode='group',
                     plot_bgcolor='white',
-                    paper_bgcolor='white',
                     height=400,
-                    hovermode='x unified',
                     legend=dict(
                         orientation='h',
                         yanchor='bottom',
@@ -1145,11 +1150,12 @@ if not datos_base.empty and not datos_comparar.empty:
                 )
                 
                 st.plotly_chart(fig_horas, use_container_width=True)
-                
-                st.caption("⚠️ *Esta es una simulación basada en la distribución de tickets. Para datos reales, se necesitaría información horaria en el Excel.*")
             
-            # Desglose por sección del día (tabla detallada)
-            with st.expander("📋 Ver desglose detallado por sección"):
+            # Desglose por sección
+            with st.expander("📋 Ver desglose por sección", expanded=True):
+                secciones_dia = sorted(set(datos_dia_base["secciones"].unique()) | 
+                                     set(datos_dia_comp["secciones"].unique()))
+                
                 data_dia = []
                 for sec in secciones_dia:
                     base_sec = datos_dia_base[datos_dia_base["secciones"] == sec]
@@ -1165,19 +1171,39 @@ if not datos_base.empty and not datos_comparar.empty:
                     ticket_prom_b = venta_b / tickets_b if tickets_b > 0 else 0
                     ticket_prom_c = venta_c / tickets_c if tickets_c > 0 else 0
                     
+                    var_venta = ((venta_c - venta_b)/venta_b*100) if venta_b > 0 and venta_c > 0 else None
+                    
                     data_dia.append({
                         "Sección": sec,
-                        f"Venta {año_base}": f"${venta_b:,.0f}" if venta_b > 0 else "Sin datos",
-                        f"Venta {año_comparar}": f"${venta_c:,.0f}" if venta_c > 0 else "Sin datos",
-                        f"Var. Venta": f"{((venta_c - venta_b)/venta_b*100):.1f}%" if venta_b > 0 and venta_c > 0 else "N/A",
-                        f"Ticket Prom {año_base}": f"${ticket_prom_b:,.2f}" if ticket_prom_b > 0 else "N/A",
-                        f"Ticket Prom {año_comparar}": f"${ticket_prom_c:,.2f}" if ticket_prom_c > 0 else "N/A",
-                        f"Entradas {año_base}": f"{entradas_b:,.0f}" if entradas_b > 0 else "Sin datos",
-                        f"Entradas {año_comparar}": f"{entradas_c:,.0f}" if entradas_c > 0 else "Sin datos"
+                        f"Venta {año_base}": f"${venta_b:,.0f}" if venta_b > 0 else "-",
+                        f"Venta {año_comparar}": f"${venta_c:,.0f}" if venta_c > 0 else "-",
+                        "Variación": f"{var_venta:+.1f}%" if var_venta is not None else "-",
+                        f"Ticket {año_base}": f"${ticket_prom_b:,.2f}" if ticket_prom_b > 0 else "-",
+                        f"Ticket {año_comparar}": f"${ticket_prom_c:,.2f}" if ticket_prom_c > 0 else "-",
+                        f"Entradas {año_base}": f"{entradas_b:,.0f}" if entradas_b > 0 else "-",
+                        f"Entradas {año_comparar}": f"{entradas_c:,.0f}" if entradas_c > 0 else "-"
                     })
                 
                 df_dia_detalle = pd.DataFrame(data_dia)
-                st.dataframe(df_dia_detalle, use_container_width=True)
+                
+                # Aplicar formato condicional a la columna de variación
+                def color_variacion(val):
+                    if isinstance(val, str) and '%' in val:
+                        try:
+                            num = float(val.replace('%', '').replace('+', ''))
+                            if num > 0:
+                                return 'color: #4caf50; font-weight: bold'
+                            elif num < 0:
+                                return 'color: #f44336; font-weight: bold'
+                        except:
+                            pass
+                    return ''
+                
+                st.dataframe(
+                    df_dia_detalle.style.applymap(color_variacion, subset=['Variación']),
+                    use_container_width=True,
+                    height=400
+                )
 
 # ---------- DATOS DETALLADOS ----------
 with st.expander("📋 Ver datos detallados", expanded=False):
