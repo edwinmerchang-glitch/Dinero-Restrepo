@@ -130,7 +130,7 @@ crear_tabla()
 
 # ---------- CARGA ----------
 st.title("📊 Comparador de Ventas Diarias")
-st.markdown("### Análisis Comparativo Interanual")
+st.markdown("### Análisis Comparativo Interanual (Mes a Mes)")
 
 with st.expander("📤 Cargar Excel", expanded=False):
     col_upload1, col_upload2 = st.columns([2, 1])
@@ -312,31 +312,83 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# ---------- DATOS FILTRADOS POR AÑO ----------
-datos_base = df_filtrado[df_filtrado["anio"] == año_base]
-datos_comparar = df_filtrado[df_filtrado["anio"] == año_comparar]
+# ---------- NUEVA LÓGICA: FILTRAR POR PERÍODO EQUIVALENTE ----------
+# Determinamos el período a comparar (mes o rango personalizado)
+if fecha_inicio.month == fecha_fin.month and fecha_inicio.year == fecha_fin.year:
+    # Caso 1: El rango está dentro de un mismo mes -> Comparar mes completo
+    mes_a_comparar = fecha_inicio.month
+    periodo_desc = f"mes de {fecha_inicio.strftime('%B')}"
+    
+    datos_base = df_filtrado[
+        (df_filtrado["anio"] == año_base) & 
+        (df_filtrado["fecha"].dt.month == mes_a_comparar)
+    ]
+    datos_comparar = df_filtrado[
+        (df_filtrado["anio"] == año_comparar) & 
+        (df_filtrado["fecha"].dt.month == mes_a_comparar)
+    ]
+    
+else:
+    # Caso 2: Rango personalizado (ej. 15 Ene - 15 Feb) -> Comparar mismo rango del año anterior
+    periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
+    
+    # Calculamos las fechas equivalentes en el año base
+    # Nota: Esto asume que el año base tiene los mismos días del año.
+    # Para años bisiestos, puede haber un pequeño desfase, pero es la mejor aproximación.
+    try:
+        fecha_inicio_base = fecha_inicio.replace(year=año_base)
+        fecha_fin_base = fecha_fin.replace(year=año_base)
+    except ValueError as e:
+        # Esto puede pasar si la fecha es 29 de febrero y el año base no es bisiesto.
+        st.warning(f"La fecha {fecha_inicio.strftime('%d/%m')} no existe en {año_base}. Se usará el 28 de febrero como aproximación.")
+        # Ajustamos al último día de febrero
+        fecha_inicio_base = fecha_inicio.replace(year=año_base, month=2, day=28)
+        fecha_fin_base = fecha_fin.replace(year=año_base, month=2, day=28)
+
+    datos_base = df_filtrado[
+        (df_filtrado["anio"] == año_base) & 
+        (df_filtrado["fecha"] >= pd.Timestamp(fecha_inicio_base)) &
+        (df_filtrado["fecha"] <= pd.Timestamp(fecha_fin_base))
+    ]
+    datos_comparar = df_filtrado[
+        (df_filtrado["anio"] == año_comparar) & 
+        (df_filtrado["fecha"] >= fecha_inicio) &
+        (df_filtrado["fecha"] <= fecha_fin)
+    ]
 
 # ---------- KPIS CON TARJETAS MODERNAS ----------
-st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc.capitalize()})</div>', unsafe_allow_html=True)
+
+# ... (resto del código para mostrar KPIs, gráficos, etc. permanece igual) ...
+# A partir de aquí, el código continúa exactamente igual que en tu script original,
+# usando las variables datos_base y datos_comparar que ahora contienen los períodos correctos.
+
+# Nota: Asegúrate de que el resto del script (desde aquí hasta el final) 
+# se pegue sin cambios. Por brevedad, no lo repito todo, pero es crucial mantenerlo.
+
+# (Aquí iría todo el código desde la línea donde empiezan los KPIs hasta el final)
+# Ejemplo de cómo continúa:
 
 if datos_base.empty and datos_comparar.empty:
-    st.warning("No hay datos para los años seleccionados en el rango de fechas")
+    st.warning("No hay datos para los años seleccionados en el período equivalente.")
     st.stop()
 elif datos_base.empty:
-    st.info(f"Mostrando solo datos de {año_comparar}")
+    st.info(f"Mostrando solo datos de {año_comparar} para el {periodo_desc}.")
     kpi_data = [(año_comparar, datos_comparar)]
 elif datos_comparar.empty:
-    st.info(f"Mostrando solo datos de {año_base}")
+    st.info(f"Mostrando solo datos de {año_base} para el {periodo_desc}.")
     kpi_data = [(año_base, datos_base)]
 else:
     kpi_data = [(año_base, datos_base), (año_comparar, datos_comparar)]
 
-# Calcular métricas
+# Calcular métricas (Este bloque es el mismo)
 if not datos_base.empty and not datos_comparar.empty:
     ventas_base = datos_base["venta"].sum()
     ventas_comp = datos_comparar["venta"].sum()
     entradas_base = datos_base["entradas"].sum()
     entradas_comp = datos_comparar["entradas"].sum()
+    
+    # ... y así sucesivamente con el resto del script ...
     
     ticket_base = ventas_base / datos_base["tickets"].sum() if datos_base["tickets"].sum() > 0 else 0
     ticket_comp = ventas_comp / datos_comparar["tickets"].sum() if datos_comparar["tickets"].sum() > 0 else 0
