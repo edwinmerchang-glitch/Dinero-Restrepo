@@ -367,29 +367,40 @@ else:
         (df_filtrado["fecha"] <= fecha_fin)
     ]
 
-# ---------- KPIS CON TARJETAS MODERNAS ----------
-st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc.capitalize()})</div>', unsafe_allow_html=True)
+# ---------- KPIS CON TARJETAS MODERNAS (CORREGIDO) ----------
+st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
 
 if datos_base.empty and datos_comparar.empty:
-    st.warning("No hay datos para los años seleccionados en el período equivalente.")
+    st.warning(f"No hay datos para el período seleccionado en {año_base} ni en {año_comparar}")
     st.stop()
 elif datos_base.empty:
-    st.info(f"Mostrando solo datos de {año_comparar} para el {periodo_desc}.")
+    st.info(f"Mostrando solo datos de {año_comparar} para {periodo_desc} (no hay datos en {año_base} para este período exacto)")
 elif datos_comparar.empty:
-    st.info(f"Mostrando solo datos de {año_base} para el {periodo_desc}.")
+    st.info(f"Mostrando solo datos de {año_base} para {periodo_desc} (no hay datos en {año_comparar} para este período exacto)")
 
-# Calcular métricas
+# Calcular métricas (solo si hay datos en ambos años)
 if not datos_base.empty and not datos_comparar.empty:
     ventas_base = datos_base["venta"].sum()
     ventas_comp = datos_comparar["venta"].sum()
     entradas_base = datos_base["entradas"].sum()
     entradas_comp = datos_comparar["entradas"].sum()
     
-    ticket_base = ventas_base / datos_base["tickets"].sum() if datos_base["tickets"].sum() > 0 else 0
-    ticket_comp = ventas_comp / datos_comparar["tickets"].sum() if datos_comparar["tickets"].sum() > 0 else 0
+    # Calcular ticket promedio correctamente (ventas totales / tickets totales)
+    tickets_base = datos_base["tickets"].sum()
+    tickets_comp = datos_comparar["tickets"].sum()
+    
+    ticket_base = ventas_base / tickets_base if tickets_base > 0 else 0
+    ticket_comp = ventas_comp / tickets_comp if tickets_comp > 0 else 0
     
     tasa_base = datos_base["tasa_conversion"].mean()
     tasa_comp = datos_comparar["tasa_conversion"].mean()
+    
+    # Mostrar información adicional sobre el período
+    col_info1, col_info2 = st.columns(2)
+    with col_info1:
+        st.info(f"📅 **{año_base}:** {len(datos_base)} registros • {datos_base['fecha'].dt.date.nunique()} días con datos")
+    with col_info2:
+        st.info(f"📅 **{año_comparar}:** {len(datos_comparar)} registros • {datos_comparar['fecha'].dt.date.nunique()} días con datos")
     
     # Crear tarjetas con estilo moderno
     col1, col2, col3, col4 = st.columns(4)
