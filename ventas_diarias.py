@@ -450,7 +450,7 @@ with st.sidebar:
     filter_html += f'<span class="filter-badge">🏷️ {len(secciones_seleccionadas)} secciones</span></div>'
     st.markdown(filter_html, unsafe_allow_html=True)
 
-# ---------- APLICAR FILTROS (VERSIÓN CORREGIDA) ----------
+# ---------- APLICAR FILTROS ----------
 if filtros_independientes:
     # Filtrar con períodos independientes
     if fecha_inicio_base_dt is not None and fecha_fin_base_dt is not None:
@@ -478,278 +478,248 @@ if filtros_independientes:
         periodo_desc_comp = "sin datos"
     
     periodo_desc = f"Períodos independientes: {año_base} ({periodo_desc_base}) vs {año_comparar} ({periodo_desc_comp})"
-    es_dia_especifico = False
     
 else:
-    # Para comparar días específicos, necesitamos tratar cada año por separado
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### 📅 Configuración de días específicos")
+    # Filtrar con mismo período
+    datos_base = df[
+        (df["anio"] == año_base) & 
+        (df["fecha"] >= fecha_inicio_base) &
+        (df["fecha"] <= fecha_fin_base) &
+        (df["secciones"].isin(secciones_seleccionadas))
+    ]
     
-    usar_dias_especificos = st.sidebar.checkbox(
-        "🔍 Comparar días específicos",
-        value=False,
-        help="Activa para comparar un día de 2025 con un día diferente de 2026"
-    )
+    datos_comparar = df[
+        (df["anio"] == año_comparar) & 
+        (df["fecha"] >= fecha_inicio) &
+        (df["fecha"] <= fecha_fin) &
+        (df["secciones"].isin(secciones_seleccionadas))
+    ]
     
-    if usar_dias_especificos:
-        st.sidebar.markdown("**Selecciona los días a comparar:**")
-        
-        # Selector para día de 2025
-        fechas_2025 = sorted(df[df["anio"] == año_base]["fecha"].dt.date.unique())
-        dia_2025 = st.sidebar.selectbox(
-            f"Día de {año_base}",
-            options=fechas_2025,
-            format_func=lambda x: x.strftime("%d/%m/%Y"),
-            key="dia_2025"
-        )
-        
-        # Selector para día de 2026
-        fechas_2026 = sorted(df[df["anio"] == año_comparar]["fecha"].dt.date.unique())
-        dia_2026 = st.sidebar.selectbox(
-            f"Día de {año_comparar}",
-            options=fechas_2026,
-            format_func=lambda x: x.strftime("%d/%m/%Y"),
-            key="dia_2026"
-        )
-        
-        if dia_2025 and dia_2026:
-            # Filtrar datos para el día específico de 2025
-            datos_base = df[
-                (df["anio"] == año_base) &
-                (df["fecha"].dt.date == dia_2025) &
-                (df["secciones"].isin(secciones_seleccionadas))
-            ]
-            
-            # Filtrar datos para el día específico de 2026
-            datos_comparar = df[
-                (df["anio"] == año_comparar) &
-                (df["fecha"].dt.date == dia_2026) &
-                (df["secciones"].isin(secciones_seleccionadas))
-            ]
-            
-            periodo_desc = f"día {dia_2025.strftime('%d/%m/%Y')} vs día {dia_2026.strftime('%d/%m/%Y')}"
-            es_dia_especifico = True
-            fecha_especifica_comp = pd.Timestamp(dia_2026)
-        else:
-            datos_base = pd.DataFrame()
-            datos_comparar = pd.DataFrame()
-            es_dia_especifico = False
-    
+    if dias_en_rango == 1:
+        periodo_desc = f"día {fecha_inicio.strftime('%d/%m/%Y')}"
     else:
-        # Modo original de período común
-        # Calcular fechas equivalentes en año base
-        dias_en_rango = (fecha_fin - fecha_inicio).days + 1
-        
-        try:
-            fecha_inicio_base = fecha_inicio.replace(year=año_base)
-            fecha_fin_base = fecha_fin.replace(year=año_base)
-        except ValueError:
-            st.warning("Ajustando fechas para año no bisiesto")
-            if fecha_inicio.month == 2 and fecha_inicio.day == 29:
-                fecha_inicio_base = fecha_inicio.replace(year=año_base, month=2, day=28)
-            else:
-                fecha_inicio_base = fecha_inicio.replace(year=año_base)
-            
-            if fecha_fin.month == 2 and fecha_fin.day == 29:
-                fecha_fin_base = fecha_fin.replace(year=año_base, month=2, day=28)
-            else:
-                fecha_fin_base = fecha_fin.replace(year=año_base)
-        
-        datos_base = df[
-            (df["anio"] == año_base) & 
-            (df["fecha"] >= fecha_inicio_base) &
-            (df["fecha"] <= fecha_fin_base) &
-            (df["secciones"].isin(secciones_seleccionadas))
-        ]
-        
-        datos_comparar = df[
-            (df["anio"] == año_comparar) & 
-            (df["fecha"] >= fecha_inicio) &
-            (df["fecha"] <= fecha_fin) &
-            (df["secciones"].isin(secciones_seleccionadas))
-        ]
-        
-        if dias_en_rango == 1:
-            periodo_desc = f"día {fecha_inicio.strftime('%d/%m/%Y')}"
-            fecha_especifica_comp = fecha_inicio
-            es_dia_especifico = True
-        else:
-            periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
-            es_dia_especifico = False
+        periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
 
-# ---------- SECCIÓN DE PROYECCIÓN (ACTUALIZADA) ----------
-if es_dia_especifico and not datos_base.empty and not datos_comparar.empty:
-    st.markdown("---")
-    st.markdown("### 🔮 Proyección y Análisis de Días Específicos")
-    
-    col_proy1, col_proy2, col_proy3 = st.columns(3)
-    
-    with col_proy1:
-        st.markdown("#### 📅 Días seleccionados")
-        if usar_dias_especificos:
-            st.info(f"**{año_base}:** {dia_2025.strftime('%d/%m/%Y')}")
-            st.info(f"**{año_comparar}:** {dia_2026.strftime('%d/%m/%Y')}")
-        else:
-            st.info(f"**{fecha_inicio.strftime('%d/%m/%Y')}**")
-        
-        st.metric(f"Ventas {año_comparar}", f"${ventas_comp:,.0f}")
-        st.metric(f"Ventas {año_base}", f"${ventas_base:,.0f}")
-        st.metric("Variación", f"{((ventas_comp/ventas_base-1)*100):+.1f}%" if ventas_base > 0 else "N/A")
-    
-    with col_proy2:
-        st.markdown("#### 📈 Proyección próximo día")
-        
-        dias_para_promedio = st.slider("Días para promedio", min_value=1, max_value=30, value=7, key="dias_promedio")
-        
-        # Usar la fecha específica del año comparar
-        if usar_dias_especificos:
-            fecha_base_proy = dia_2026
-        else:
-            fecha_base_proy = fecha_especifica_comp
-        
-        # Obtener últimos N días antes de la fecha seleccionada
-        fecha_limite = pd.Timestamp(fecha_base_proy)
-        datos_historicos = datos_comparar[datos_comparar['fecha'] < fecha_limite].sort_values('fecha', ascending=False).head(dias_para_promedio)
-        
-        if len(datos_historicos) > 0:
-            promedio_ultimos_dias = datos_historicos['venta'].mean()
-            
-            # Proyectar siguiente día
-            siguiente_dia = fecha_base_proy + timedelta(days=1)
-            
-            # Verificar si existe el siguiente día
-            datos_siguiente = datos_comparar[datos_comparar['fecha'].dt.date == siguiente_dia.date()]
-            
-            if not datos_siguiente.empty:
-                venta_siguiente = datos_siguiente['venta'].sum()
-                st.success(f"**{siguiente_dia.strftime('%d/%m/%Y')}** (dato real)")
-                st.metric("Venta real", f"${venta_siguiente:,.0f}")
-                st.metric("vs día actual", f"{((venta_siguiente/ventas_comp-1)*100):+.1f}%")
-            else:
-                st.info(f"**{siguiente_dia.strftime('%d/%m/%Y')}** (proyección)")
-                st.metric("Venta proyectada", f"${promedio_ultimos_dias:,.0f}")
-                st.metric("vs día actual", f"{((promedio_ultimos_dias/ventas_comp-1)*100):+.1f}%")
-                st.caption(f"Basado en promedio últimos {len(datos_historicos)} días")
-        else:
-            st.warning("No hay datos históricos suficientes para proyección")
-    
-    with col_proy3:
-        st.markdown("#### 🎯 Comparación adicional")
-        
-        # Permitir comparar con otro día del mismo año
-        st.markdown(f"**Comparar con otro día de {año_comparar}:**")
-        
-        fechas_disponibles = sorted(datos_comparar['fecha'].dt.date.unique())
-        fecha_adicional = st.selectbox(
-            "Selecciona fecha",
-            options=fechas_disponibles,
-            format_func=lambda x: x.strftime("%d/%m/%Y"),
-            key="fecha_adicional"
-        )
-        
-        if fecha_adicional:
-            datos_adicional = datos_comparar[datos_comparar['fecha'].dt.date == fecha_adicional]
-            venta_adicional = datos_adicional['venta'].sum()
-            
-            st.metric(
-                f"{fecha_adicional.strftime('%d/%m/%Y')}",
-                f"${venta_adicional:,.0f}",
-                f"{((venta_adicional/ventas_comp-1)*100):+.1f}% vs día actual"
-            )
+# ---------- KPIS CON PRESUPUESTO ----------
+st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
 
-# ---------- COMPARACIÓN FLEXIBLE DÍA A DÍA (ACTUALIZADA) ----------
-st.markdown(f'<div class="section-title">📅 Comparación Flexible Día a Día</div>', unsafe_allow_html=True)
+if datos_base.empty and datos_comparar.empty:
+    st.warning("No hay datos para los períodos seleccionados")
+    st.stop()
+
+# Mostrar información de registros
+col_reg1, col_reg2 = st.columns(2)
+with col_reg1:
+    if not datos_base.empty:
+        dias_base = datos_base['fecha'].dt.date.nunique()
+        st.info(f"📅 **{año_base}:** {len(datos_base)} registros • {dias_base} días con datos")
+    else:
+        st.warning(f"⚠️ No hay datos para {año_base} en el período seleccionado")
+
+with col_reg2:
+    if not datos_comparar.empty:
+        dias_comp = datos_comparar['fecha'].dt.date.nunique()
+        st.info(f"📅 **{año_comparar}:** {len(datos_comparar)} registros • {dias_comp} días con datos")
+    else:
+        st.warning(f"⚠️ No hay datos para {año_comparar} en el período seleccionado")
+
+# Calcular métricas si hay datos en ambos años
+if not datos_base.empty and not datos_comparar.empty:
+    ventas_base = datos_base["venta"].sum()
+    ventas_comp = datos_comparar["venta"].sum()
+    entradas_base = datos_base["entradas"].sum()
+    entradas_comp = datos_comparar["entradas"].sum()
+    
+    tickets_base = datos_base["tickets"].sum()
+    tickets_comp = datos_comparar["tickets"].sum()
+    
+    ticket_base = ventas_base / tickets_base if tickets_base > 0 else 0
+    ticket_comp = ventas_comp / tickets_comp if tickets_comp > 0 else 0
+    
+    tasa_base = datos_base["tasa_conversion"].mean()
+    tasa_comp = datos_comparar["tasa_conversion"].mean()
+    
+    # Calcular presupuesto con crecimiento
+    if mostrar_presupuesto:
+        presupuesto = ventas_base * (1 + crecimiento_presupuesto / 100)
+        cumplimiento_presupuesto = (ventas_comp / presupuesto * 100) if presupuesto > 0 else 0
+    
+    # Crear KPIs
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        delta = ((ventas_comp - ventas_base)/ventas_base*100) if ventas_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Ventas {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">${ventas_comp:,.0f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${ventas_base:,.0f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        delta = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Entradas {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">{entradas_comp:,.0f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {entradas_base:,.0f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        delta = ((ticket_comp - ticket_base)/ticket_base*100) if ticket_base > 0 else None
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Ticket Prom. {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">${ticket_comp:,.2f}</h2>
+            <p style="color: {'#4caf50' if delta and delta > 0 else '#f44336' if delta and delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.1f}%' if delta and delta > 0 else f'▼ {abs(delta):.1f}%' if delta and delta < 0 else '0%'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: ${ticket_base:,.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        delta = tasa_comp - tasa_base
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="color: #666; font-size: 0.9rem; margin: 0;">Tasa Conv. {año_comparar}</h3>
+            <h2 style="color: #1f77b4; font-size: 2rem; margin: 0.5rem 0;">{tasa_comp:.2f}%</h2>
+            <p style="color: {'#4caf50' if delta > 0 else '#f44336' if delta < 0 else '#666'}; margin: 0;">
+                {f'▲ {delta:.2f} pp' if delta > 0 else f'▼ {abs(delta):.2f} pp' if delta < 0 else '0 pp'} vs {año_base}
+            </p>
+            <p style="color: #999; font-size: 0.8rem; margin: 0.5rem 0 0 0;">{año_base}: {tasa_base:.2f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Tarjeta de presupuesto
+    if mostrar_presupuesto:
+        st.markdown("### 🎯 Presupuesto vs Real")
+        
+        col_budget1, col_budget2, col_budget3 = st.columns(3)
+        
+        with col_budget1:
+            st.markdown(f"""
+            <div class="budget-card">
+                <h4 style="margin: 0; opacity: 0.9;">Presupuesto {año_comparar}</h4>
+                <h2 style="margin: 0.5rem 0; font-size: 2.2rem;">${presupuesto:,.0f}</h2>
+                <p style="margin: 0; opacity: 0.9;">+{crecimiento_presupuesto}% vs {año_base}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_budget2:
+            color_cumpl = "#4caf50" if cumplimiento_presupuesto >= 100 else "#f44336"
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4 style="color: #666; margin: 0;">Cumplimiento</h4>
+                <h2 style="color: {color_cumpl}; margin: 0.5rem 0;">{cumplimiento_presupuesto:.1f}%</h2>
+                <p style="color: #999;">vs presupuesto</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_budget3:
+            diferencia = ventas_comp - presupuesto
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4 style="color: #666; margin: 0;">Diferencia</h4>
+                <h2 style="color: {'#4caf50' if diferencia >= 0 else '#f44336'}; margin: 0.5rem 0;">${diferencia:+,.0f}</h2>
+                <p style="color: #999;">vs presupuesto</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Barra de progreso visual
+        progreso = min(cumplimiento_presupuesto / 100, 2.0)  # Máximo 200%
+        st.progress(progreso if progreso <= 1.0 else 1.0, 
+                   text=f"Progreso: {cumplimiento_presupuesto:.1f}% del presupuesto")
+        
+        if cumplimiento_presupuesto > 100:
+            st.success(f"🎉 ¡Superaste el presupuesto en {cumplimiento_presupuesto - 100:.1f}%!")
+        elif cumplimiento_presupuesto < 100:
+            st.warning(f"📉 Estás {100 - cumplimiento_presupuesto:.1f}% por debajo del presupuesto")
+
+# ---------- GRÁFICOS EXISTENTES ----------
+st.markdown(f'<div class="section-title">📊 Análisis Visual</div>', unsafe_allow_html=True)
 
 if not datos_base.empty and not datos_comparar.empty:
+    # Preparar datos para gráficos
+    # Combinar datos de ambos años para los gráficos que necesitan vista anual
+    df_plot = pd.concat([datos_base, datos_comparar])
+    df_plot['mes'] = df_plot['fecha'].dt.month
+    df_plot['año_str'] = df_plot['anio'].astype(str)
     
-    st.info("""
-    **🔄 Compara cualquier día de cada año**
+    # Diccionario de meses en español
+    meses_es = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    df_plot['mes_nombre'] = df_plot['mes'].map(meses_es)
     
-    En el sidebar, activa "🔍 Comparar días específicos" y selecciona los días que quieras comparar.
-    """)
+    # Gráfico 1: Evolución mensual comparativa
+    df_mensual = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
+    df_mensual = df_mensual.sort_values('mes')
     
-    # Mostrar tabla comparativa rápida
-    st.markdown("### 📊 Tabla comparativa de días")
-    
-    # Crear DataFrame con todos los días de ambos años
-    df_dias_base = datos_base.groupby(datos_base['fecha'].dt.date)['venta'].sum().reset_index()
-    df_dias_base.columns = ['fecha', f'venta_{año_base}']
-    df_dias_base['año'] = año_base
-    
-    df_dias_comp = datos_comparar.groupby(datos_comparar['fecha'].dt.date)['venta'].sum().reset_index()
-    df_dias_comp.columns = ['fecha', f'venta_{año_comparar}']
-    df_dias_comp['año'] = año_comparar
-    
-    # Mostrar últimos 10 días de cada año
-    col_tab1, col_tab2 = st.columns(2)
-    
-    with col_tab1:
-        st.markdown(f"**{año_base} - Últimos 10 días**")
-        st.dataframe(
-            df_dias_base.sort_values('fecha', ascending=False).head(10)
-            .style.format({
-                'fecha': lambda x: x.strftime('%d/%m/%Y'),
-                f'venta_{año_base}': '${:,.0f}'
-            }),
-            use_container_width=True,
-            height=400
-        )
-    
-    with col_tab2:
-        st.markdown(f"**{año_comparar} - Últimos 10 días**")
-        st.dataframe(
-            df_dias_comp.sort_values('fecha', ascending=False).head(10)
-            .style.format({
-                'fecha': lambda x: x.strftime('%d/%m/%Y'),
-                f'venta_{año_comparar}': '${:,.0f}'
-            }),
-            use_container_width=True,
-            height=400
-        )
-    
-    # Gráfico de comparación de días
-    st.markdown("### 📈 Tendencia diaria")
-    
-    # Unir datos para gráfico
-    df_tendencia = pd.concat([
-        df_dias_base.rename(columns={f'venta_{año_base}': 'venta'}),
-        df_dias_comp.rename(columns={f'venta_{año_comparar}': 'venta'})
-    ])
-    
-    fig_tendencia = go.Figure()
+    fig1 = go.Figure()
     
     for año in [año_base, año_comparar]:
-        df_año = df_tendencia[df_tendencia['año'] == año]
-        color = '#1f77b4' if año == año_base else '#ff7f0e'
-        
-        fig_tendencia.add_trace(go.Scatter(
-            x=df_año['fecha'],
-            y=df_año['venta'],
-            mode='lines+markers',
-            name=f'Año {año}',
-            line=dict(color=color, width=2),
-            marker=dict(size=4),
-            hovertemplate='<b>%{x|%d/%m/%Y}</b><br>' +
-                         f'Ventas: $%{{y:,.0f}}<br>' +
-                         '<extra></extra>'
-        ))
+        df_año = df_mensual[df_mensual['anio'] == año]
+        if not df_año.empty:
+            color = '#1f77b4' if año == año_base else '#ff7f0e'
+            nombre = f"Año {año}"
+            
+            fig1.add_trace(go.Scatter(
+                x=df_año['mes_nombre'],
+                y=df_año['venta'],
+                mode='lines+markers+text',
+                name=nombre,
+                line=dict(color=color, width=3),
+                marker=dict(size=10, symbol='circle'),
+                text=df_año['venta'].apply(lambda x: f'${x/1e6:.1f}M'),
+                textposition='top center',
+                textfont=dict(size=10, color=color),
+                hovertemplate='<b>%{x}</b><br>' +
+                             'Ventas: $%{y:,.0f}<br>' +
+                             '<extra>%{fullData.name}</extra>'
+            ))
     
-    fig_tendencia.update_layout(
-        title='Comparación Diaria de Ventas',
-        xaxis=dict(title='Fecha', tickformat='%d/%m'),
-        yaxis=dict(title='Ventas ($)', tickformat='$,.0f'),
+    fig1.update_layout(
+        title=dict(
+            text='Evolución Mensual de Ventas',
+            x=0.5,
+            font=dict(size=20)
+        ),
+        xaxis=dict(
+            title='Mes',
+            tickangle=45,
+            categoryorder='array',
+            categoryarray=list(meses_es.values()),
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
         plot_bgcolor='white',
-        height=400,
+        paper_bgcolor='white',
+        hovermode='x unified',
         legend=dict(
             orientation='h',
             yanchor='bottom',
             y=1.02,
             xanchor='center',
             x=0.5
-        )
+        ),
+        margin=dict(b=100)
     )
     
-    st.plotly_chart(fig_tendencia, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True)
     
     # Gráfico 2: Barras comparativas por sección
     st.markdown("### 📊 Comparación por Sección")
@@ -921,6 +891,7 @@ if not datos_base.empty and not datos_comparar.empty:
     # Gráfico 4: Heatmap de rendimiento por mes y sección
     st.markdown("### 🔥 Mapa de Calor - Rendimiento por Mes y Sección")
     
+    # Seleccionar año para el heatmap
     año_heatmap = st.radio(
         "Selecciona año para ver el detalle:",
         [año_base, año_comparar],
@@ -930,6 +901,7 @@ if not datos_base.empty and not datos_comparar.empty:
     df_heat = df_plot[df_plot['anio'] == año_heatmap].copy()
     
     if not df_heat.empty:
+        # Crear tabla pivote para el heatmap
         pivot_heat = df_heat.pivot_table(
             values='venta',
             index='secciones',
@@ -938,6 +910,7 @@ if not datos_base.empty and not datos_comparar.empty:
             fill_value=0
         )
         
+        # Reordenar meses
         meses_disponibles = [col for col in list(meses_es.values()) if col in pivot_heat.columns]
         pivot_heat = pivot_heat[meses_disponibles]
         
@@ -1038,6 +1011,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     st.markdown(f'<div class="section-title">📈 Evolución Comparativa con Presupuesto</div>', unsafe_allow_html=True)
     
     # Preparar datos para la gráfica de evolución acumulada
+    # Agrupar por fecha para ambos años y calcular acumulado
     df_evolucion_base = datos_base.groupby('fecha')['venta'].sum().reset_index()
     df_evolucion_base = df_evolucion_base.sort_values('fecha')
     df_evolucion_base['venta_acum'] = df_evolucion_base['venta'].cumsum()
@@ -1051,12 +1025,16 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     df_evolucion_comp['tipo'] = 'Real'
     
     # Calcular líneas de presupuesto
+    # Para el año base (presupuesto base = ventas reales acumuladas)
     if len(df_evolucion_base) > 0:
         primer_dia_base = df_evolucion_base['fecha'].iloc[0]
         ultimo_dia_base = df_evolucion_base['fecha'].iloc[-1]
         dias_totales_base = (ultimo_dia_base - primer_dia_base).days + 1
+        
+        # Presupuesto diario para año base (promedio)
         presupuesto_diario_base = ventas_base / dias_totales_base if dias_totales_base > 0 else 0
         
+        # Crear DataFrame para línea de presupuesto base
         df_presupuesto_base = pd.DataFrame({
             'fecha': df_evolucion_base['fecha'],
             'venta_acum': [presupuesto_diario_base * (i + 1) for i in range(len(df_evolucion_base))],
@@ -1064,12 +1042,16 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
             'tipo': 'Presupuesto'
         })
     
+    # Para el año comparar (presupuesto = ventas base * (1 + crecimiento))
     if len(df_evolucion_comp) > 0:
         primer_dia_comp = df_evolucion_comp['fecha'].iloc[0]
         ultimo_dia_comp = df_evolucion_comp['fecha'].iloc[-1]
         dias_totales_comp = (ultimo_dia_comp - primer_dia_comp).days + 1
+        
+        # Presupuesto diario para año comparar
         presupuesto_diario_comp = presupuesto / dias_totales_comp if dias_totales_comp > 0 else 0
         
+        # Crear DataFrame para línea de presupuesto comparar
         df_presupuesto_comp = pd.DataFrame({
             'fecha': df_evolucion_comp['fecha'],
             'venta_acum': [presupuesto_diario_comp * (i + 1) for i in range(len(df_evolucion_comp))],
@@ -1077,9 +1059,10 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
             'tipo': 'Presupuesto'
         })
     
-    # Crear figura
+    # Crear figura con Plotly
     fig_evolucion = go.Figure()
     
+    # Línea real año base
     if not df_evolucion_base.empty:
         fig_evolucion.add_trace(go.Scatter(
             x=df_evolucion_base['fecha'],
@@ -1093,6 +1076,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
                          '<extra></extra>'
         ))
     
+    # Línea presupuesto año base
     if not df_presupuesto_base.empty:
         fig_evolucion.add_trace(go.Scatter(
             x=df_presupuesto_base['fecha'],
@@ -1105,6 +1089,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
                          '<extra></extra>'
         ))
     
+    # Línea real año comparar
     if not df_evolucion_comp.empty:
         fig_evolucion.add_trace(go.Scatter(
             x=df_evolucion_comp['fecha'],
@@ -1118,6 +1103,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
                          '<extra></extra>'
         ))
     
+    # Línea presupuesto año comparar
     if not df_presupuesto_comp.empty:
         fig_evolucion.add_trace(go.Scatter(
             x=df_presupuesto_comp['fecha'],
@@ -1130,6 +1116,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
                          '<extra></extra>'
         ))
     
+    # Configurar layout
     fig_evolucion.update_layout(
         title=dict(
             text=f'Evolución Acumulada de Ventas vs Presupuesto (+{crecimiento_presupuesto}%)',
@@ -1160,6 +1147,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
         margin=dict(b=100)
     )
     
+    # Añadir anotación con el objetivo
     fig_evolucion.add_annotation(
         x=0.02,
         y=0.98,
@@ -1180,6 +1168,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     col_comp1, col_comp2, col_comp3 = st.columns(3)
     
     with col_comp1:
+        # Comparación con año base
         if not df_evolucion_comp.empty and not df_evolucion_base.empty:
             ultimo_valor_comp = df_evolucion_comp['venta_acum'].iloc[-1]
             ultimo_valor_base = df_evolucion_base['venta_acum'].iloc[-1]
@@ -1193,6 +1182,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
             )
     
     with col_comp2:
+        # Comparación con presupuesto
         if not df_evolucion_comp.empty and not df_presupuesto_comp.empty:
             ultimo_real = df_evolucion_comp['venta_acum'].iloc[-1]
             ultimo_pres = df_presupuesto_comp['venta_acum'].iloc[-1]
@@ -1206,6 +1196,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
             )
     
     with col_comp3:
+        # Proyección final
         if not df_evolucion_comp.empty and dias_totales_comp > 0:
             dias_transcurridos = len(df_evolucion_comp)
             ritmo_diario = ultimo_real / dias_transcurridos if dias_transcurridos > 0 else 0
@@ -1227,6 +1218,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     
     fig_barras = go.Figure()
     
+    # Barras de real
     fig_barras.add_trace(go.Bar(
         name='Real',
         x=periodos,
@@ -1239,6 +1231,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
                      '<extra></extra>'
     ))
     
+    # Línea de presupuesto
     fig_barras.add_trace(go.Scatter(
         name='Presupuesto',
         x=periodos,
@@ -1295,6 +1288,7 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     # Tabla resumen
     st.markdown("### 📋 Resumen Comparativo")
     
+    # Calcular promedios diarios
     promedio_diario_base = ventas_base / dias_base if dias_base > 0 else 0
     promedio_diario_comp = ventas_comp / dias_comp if dias_comp > 0 else 0
     
@@ -1322,196 +1316,128 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     
     st.dataframe(df_resumen, use_container_width=True, hide_index=True)
 
-# ---------- COMPARACIÓN FLEXIBLE DÍA A DÍA (NUEVA VERSIÓN) ----------
-st.markdown(f'<div class="section-title">📅 Comparación Flexible Día a Día</div>', unsafe_allow_html=True)
+# ---------- COMPARACIÓN DÍA A DÍA ----------
+st.markdown(f'<div class="section-title">📅 Comparación Día a Día</div>', unsafe_allow_html=True)
 
 if not datos_base.empty and not datos_comparar.empty:
     
     st.info("""
-    **🔄 Compara cualquier día de cada año**
+    **🔍 Compara un día específico de cada año**
     
-    Puedes seleccionar fechas diferentes en cada año para comparar. 
-    Útil para comparar, por ejemplo, el 2 de marzo de 2025 con el 1 de marzo de 2026.
+    Selecciona una fecha de cada año para ver cómo se comparan las métricas. 
+    Puedes buscar el mismo día (mismo mes y día) en ambos años con el botón "🔄 Mismo día".
     """)
     
-    # Crear pestañas para diferentes modos
-    tab_dia1, tab_dia2, tab_dia3 = st.tabs(["📅 Comparador Libre", "🔄 Mismo día relativo", "📊 Calendario"])
+    # Selectores de fecha
+    col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
     
-    with tab_dia1:
-        # Selectores independientes para cada año
-        col_dia1, col_dia2 = st.columns(2)
+    with col_cal1:
+        st.markdown(f"### **{año_base}**")
+        fechas_base = sorted(datos_base["fecha"].dt.date.unique())
         
-        with col_dia1:
-            st.markdown(f"### **{año_base}**")
-            fechas_base = sorted(datos_base["fecha"].dt.date.unique())
-            
-            fecha_base_libre = st.selectbox(
-                "Selecciona fecha",
-                options=fechas_base,
-                format_func=lambda x: x.strftime("%A %d de %B, %Y"),
-                key="fecha_base_libre"
-            )
-            
-            if fecha_base_libre:
-                datos_dia_base_libre = datos_base[datos_base["fecha"].dt.date == fecha_base_libre]
-                venta_base_libre = datos_dia_base_libre["venta"].sum()
-                entradas_base_libre = datos_dia_base_libre["entradas"].sum()
-                
-                st.metric("Ventas", f"${venta_base_libre:,.0f}")
-                st.metric("Entradas", f"{entradas_base_libre:,.0f}")
+        fecha_base = st.selectbox(
+            "Selecciona fecha",
+            options=fechas_base,
+            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+            key="fecha_base_select"
+        )
+    
+    with col_cal2:
+        st.markdown(f"### **{año_comparar}**")
+        fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
         
-        with col_dia2:
-            st.markdown(f"### **{año_comparar}**")
-            fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
-            
-            fecha_comp_libre = st.selectbox(
-                "Selecciona fecha",
-                options=fechas_comp,
-                format_func=lambda x: x.strftime("%A %d de %B, %Y"),
-                key="fecha_comp_libre"
-            )
-            
-            if fecha_comp_libre:
-                datos_dia_comp_libre = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp_libre]
-                venta_comp_libre = datos_dia_comp_libre["venta"].sum()
-                entradas_comp_libre = datos_dia_comp_libre["entradas"].sum()
-                
-                st.metric("Ventas", f"${venta_comp_libre:,.0f}")
-                st.metric("Entradas", f"{entradas_comp_libre:,.0f}")
+        fecha_comp = st.selectbox(
+            "Selecciona fecha",
+            options=fechas_comp,
+            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+            key="fecha_comp_select"
+        )
+    
+    with col_cal3:
+        st.markdown("### **Acciones**")
         
-        # Mostrar comparación si ambas fechas están seleccionadas
-        if fecha_base_libre and fecha_comp_libre:
+        if st.button("🔄 Mismo día", use_container_width=True, type="primary"):
+            # Buscar mismo mes/día
+            fecha_encontrada = False
+            for f_base in fechas_base:
+                for f_comp in fechas_comp:
+                    if f_base.month == f_comp.month and f_base.day == f_comp.day:
+                        fecha_base = f_base
+                        fecha_comp = f_comp
+                        fecha_encontrada = True
+                        st.success(f"✓ {f_base.strftime('%d de %B')} encontrado en ambos años")
+                        st.rerun()
+                        break
+                if fecha_encontrada:
+                    break
+            
+            if not fecha_encontrada:
+                st.warning("No se encontró el mismo día en ambos años")
+    
+    # Mostrar comparación si hay fechas seleccionadas
+    if fecha_base and fecha_comp:
+        datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
+        datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
+        
+        if not datos_dia_base.empty and not datos_dia_comp.empty:
             st.markdown("---")
-            st.markdown(f"### 📊 Comparación: {fecha_base_libre.strftime('%d/%m/%Y')} vs {fecha_comp_libre.strftime('%d/%m/%Y')}")
+            st.markdown(f"## 📊 Comparación: {fecha_base.strftime('%d/%m/%Y')} vs {fecha_comp.strftime('%d/%m/%Y')}")
             
-            col_comp1, col_comp2, col_comp3, col_comp4 = st.columns(4)
+            # Calcular métricas del día
+            venta_base = datos_dia_base["venta"].sum()
+            venta_comp = datos_dia_comp["venta"].sum()
+            entradas_base = datos_dia_base["entradas"].sum()
+            entradas_comp = datos_dia_comp["entradas"].sum()
+            tickets_base = datos_dia_base["tickets"].sum()
+            tickets_comp = datos_dia_comp["tickets"].sum()
             
-            with col_comp1:
-                delta_venta = ((venta_comp_libre - venta_base_libre)/venta_base_libre*100) if venta_base_libre > 0 else None
+            ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
+            ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
+            
+            tasa_base = datos_dia_base["tasa_conversion"].mean()
+            tasa_comp = datos_dia_comp["tasa_conversion"].mean()
+            
+            # Mostrar KPIs del día
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+            
+            delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
+            with col_d1:
                 st.metric(
-                    "Ventas",
-                    f"${venta_comp_libre:,.0f}",
+                    f"Ventas {año_comparar}",
+                    f"${venta_comp:,.0f}",
                     f"{delta_venta:+.1f}%" if delta_venta else None
                 )
             
-            with col_comp2:
-                delta_ent = ((entradas_comp_libre - entradas_base_libre)/entradas_base_libre*100) if entradas_base_libre > 0 else None
+            delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+            with col_d2:
                 st.metric(
-                    "Entradas",
-                    f"{entradas_comp_libre:,.0f}",
+                    f"Entradas {año_comparar}",
+                    f"{entradas_comp:,.0f}",
                     f"{delta_ent:+.1f}%" if delta_ent else None
                 )
             
-            # Calcular ticket promedio
-            tickets_base_libre = datos_dia_base_libre["tickets"].sum()
-            tickets_comp_libre = datos_dia_comp_libre["tickets"].sum()
-            
-            ticket_base_libre = venta_base_libre / tickets_base_libre if tickets_base_libre > 0 else 0
-            ticket_comp_libre = venta_comp_libre / tickets_comp_libre if tickets_comp_libre > 0 else 0
-            
-            with col_comp3:
-                delta_ticket = ((ticket_comp_libre - ticket_base_libre)/ticket_base_libre*100) if ticket_base_libre > 0 else None
+            delta_ticket = ((ticket_prom_comp - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
+            with col_d3:
                 st.metric(
-                    "Ticket Prom.",
-                    f"${ticket_comp_libre:,.2f}",
+                    f"Ticket Prom. {año_comparar}",
+                    f"${ticket_prom_comp:,.2f}",
                     f"{delta_ticket:+.1f}%" if delta_ticket else None
                 )
             
-            # Tasa de conversión
-            tasa_base_libre = datos_dia_base_libre["tasa_conversion"].mean()
-            tasa_comp_libre = datos_dia_comp_libre["tasa_conversion"].mean()
-            
-            with col_comp4:
-                delta_tasa = tasa_comp_libre - tasa_base_libre
+            delta_tasa = tasa_comp - tasa_base
+            with col_d4:
                 st.metric(
-                    "Tasa Conv.",
-                    f"{tasa_comp_libre:.2f}%",
+                    f"Tasa Conv. {año_comparar}",
+                    f"{tasa_comp:.2f}%",
                     f"{delta_tasa:+.2f} pp"
                 )
-    
-    with tab_dia2:
-        st.markdown("#### 🔄 Comparar mismo día relativo")
-        st.caption("Ejemplo: 2 de marzo vs 1 de marzo (días diferentes pero relacionados)")
-        
-        col_rel1, col_rel2, col_rel3 = st.columns(3)
-        
-        with col_rel1:
-            st.markdown(f"**{año_base}**")
-            fecha_base_rel = st.date_input(
-                "Fecha base",
-                value=fechas_base[0] if fechas_base else None,
-                min_value=min(fechas_base) if fechas_base else None,
-                max_value=max(fechas_base) if fechas_base else None,
-                key="fecha_base_rel"
-            )
-        
-        with col_rel2:
-            st.markdown(f"**{año_comparar}**")
-            offset = st.number_input("Días de diferencia", min_value=-30, max_value=30, value=0, step=1)
-            
-            if fecha_base_rel:
-                try:
-                    fecha_comp_rel = fecha_base_rel.replace(year=año_comparar) + timedelta(days=offset)
-                    
-                    # Verificar si la fecha existe en los datos
-                    fechas_comp_set = set(fechas_comp)
-                    fecha_valida = fecha_comp_rel in fechas_comp_set
-                    
-                    if fecha_valida:
-                        st.success(f"✓ {fecha_comp_rel.strftime('%d/%m/%Y')}")
-                    else:
-                        st.error(f"✗ {fecha_comp_rel.strftime('%d/%m/%Y')} (sin datos)")
-                except:
-                    st.error("Fecha no válida")
-        
-        with col_rel3:
-            st.markdown("**Acción**")
-            if st.button("Comparar", use_container_width=True):
-                if fecha_base_rel and fecha_valida:
-                    st.session_state['fecha_base_libre'] = fecha_base_rel
-                    st.session_state['fecha_comp_libre'] = fecha_comp_rel
-                    st.rerun()
-    
-    with tab_dia3:
-        st.markdown("#### 📊 Vista rápida de días")
-        
-        col_cal1, col_cal2 = st.columns(2)
-        
-        with col_cal1:
-            st.markdown(f"**{año_base} - Últimos 10 días**")
-            df_base_ultimos = datos_base.groupby(datos_base['fecha'].dt.date)['venta'].sum().reset_index()
-            df_base_ultimos.columns = ['fecha', 'venta']
-            df_base_ultimos = df_base_ultimos.sort_values('fecha', ascending=False).head(10)
-            
-            st.dataframe(
-                df_base_ultimos.style.format({
-                    'fecha': lambda x: x.strftime('%d/%m/%Y'),
-                    'venta': '${:,.0f}'
-                }),
-                use_container_width=True,
-                height=300
-            )
-        
-        with col_cal2:
-            st.markdown(f"**{año_comparar} - Últimos 10 días**")
-            df_comp_ultimos = datos_comparar.groupby(datos_comparar['fecha'].dt.date)['venta'].sum().reset_index()
-            df_comp_ultimos.columns = ['fecha', 'venta']
-            df_comp_ultimos = df_comp_ultimos.sort_values('fecha', ascending=False).head(10)
-            
-            st.dataframe(
-                df_comp_ultimos.style.format({
-                    'fecha': lambda x: x.strftime('%d/%m/%Y'),
-                    'venta': '${:,.0f}'
-                }),
-                use_container_width=True,
-                height=300
-            )
 
 # ---------- DATOS DETALLADOS ----------
 with st.expander("📋 Ver datos detallados", expanded=False):
     tab1, tab2 = st.tabs(["Resumen por Período", "Registros Detallados"])
     
     with tab1:
+        # Crear resumen para los períodos seleccionados
         resumen_data = []
         
         if not datos_base.empty:
@@ -1540,6 +1466,7 @@ with st.expander("📋 Ver datos detallados", expanded=False):
         st.dataframe(resumen_df, use_container_width=True)
     
     with tab2:
+        # Mostrar todos los registros del período seleccionado
         df_detalle = pd.concat([datos_base, datos_comparar]) if not datos_base.empty or not datos_comparar.empty else pd.DataFrame()
         if not df_detalle.empty:
             st.dataframe(
