@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import datetime, timedelta, date  # Añadido 'date' aquí
+from datetime import datetime, timedelta
 import os
 import plotly.express as px
 import plotly.graph_objects as go
@@ -220,8 +220,6 @@ if df.empty:
     st.warning("⚠️ Aún no hay datos cargados")
     st.stop()
 
-# ... (código anterior permanece igual hasta la línea de la barra lateral) ...
-
 # ---------- SIDEBAR - CONFIGURACIÓN ----------
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
@@ -249,7 +247,8 @@ with st.sidebar:
     
     if año_base == año_comparar and len(años_disponibles) > 1:
         st.warning("Selecciona años diferentes")
-        # No modificamos automáticamente, solo advertimos
+        if año_comparar == años_disponibles[0]:
+            año_base = años_disponibles[1] if len(años_disponibles) > 1 else año_base
     
     st.markdown("---")
     
@@ -275,95 +274,115 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # --- LÓGICA DE FECHAS MODIFICADA ---
     if filtros_independientes:
-        # Filtros independientes para cada año (SIN RESTRICCIONES DE FECHA)
+        # Filtros independientes para cada año
         st.markdown("#### 📅 Períodos por año")
         
-        # --- Filtros para año base (SIN RESTRICCIONES) ---
+        # Filtros para año base
         st.markdown(f"**{año_base}**")
-        
-        # Definir fechas por defecto basadas en el año, no en los datos
-        default_inicio_base = date(año_base, 1, 1)
-        default_fin_base = date(año_base, 12, 31)
-        
-        col_fecha_base1, col_fecha_base2 = st.columns(2)
-        with col_fecha_base1:
-            fecha_inicio_base = st.date_input(
-                "Fecha inicial",
-                value=default_inicio_base,
-                key="fecha_inicio_base"
-            )
-        with col_fecha_base2:
-            fecha_fin_base = st.date_input(
-                "Fecha final",
-                value=default_fin_base,
-                key="fecha_fin_base"
-            )
-        
-        # Convertir a Timestamp para filtrado (maneja fechas fuera del rango de datos)
-        fecha_inicio_base_dt = pd.Timestamp(fecha_inicio_base)
-        fecha_fin_base_dt = pd.Timestamp(fecha_fin_base)
-        
-        # Validación simple de rango
-        if fecha_inicio_base_dt > fecha_fin_base_dt:
-            st.error("La fecha inicial debe ser menor o igual a la fecha final")
-            # Intercambiar para evitar errores
-            fecha_inicio_base_dt, fecha_fin_base_dt = fecha_fin_base_dt, fecha_inicio_base_dt
-            fecha_inicio_base, fecha_fin_base = fecha_fin_base, fecha_inicio_base
+        df_base_year = df[df["anio"] == año_base]
+        if not df_base_year.empty:
+            min_fecha_base = df_base_year["fecha"].min().date()
+            max_fecha_base = df_base_year["fecha"].max().date()
+            
+            col_fecha_base1, col_fecha_base2 = st.columns(2)
+            with col_fecha_base1:
+                fecha_inicio_base = st.date_input(
+                    "Fecha inicial",
+                    value=min_fecha_base,
+                    min_value=min_fecha_base,
+                    max_value=max_fecha_base,
+                    key="fecha_inicio_base"
+                )
+            with col_fecha_base2:
+                fecha_fin_base = st.date_input(
+                    "Fecha final",
+                    value=max_fecha_base,
+                    min_value=min_fecha_base,
+                    max_value=max_fecha_base,
+                    key="fecha_fin_base"
+                )
+            
+            # Convertir a datetime para filtrado
+            fecha_inicio_base_dt = pd.Timestamp(fecha_inicio_base)
+            fecha_fin_base_dt = pd.Timestamp(fecha_fin_base)
+            
+            if fecha_inicio_base_dt > fecha_fin_base_dt:
+                st.error("La fecha inicial debe ser menor o igual a la fecha final")
+                fecha_inicio_base_dt, fecha_fin_base_dt = fecha_fin_base_dt, fecha_inicio_base_dt
+                fecha_inicio_base, fecha_fin_base = fecha_fin_base, fecha_inicio_base
+        else:
+            st.warning(f"No hay datos para {año_base}")
+            fecha_inicio_base_dt = None
+            fecha_fin_base_dt = None
+            fecha_inicio_base = None
+            fecha_fin_base = None
         
         st.markdown("---")
         
-        # --- Filtros para año comparar (SIN RESTRICCIONES) ---
+        # Filtros para año comparar
         st.markdown(f"**{año_comparar}**")
-        
-        # Definir fechas por defecto basadas en el año
-        default_inicio_comp = date(año_comparar, 1, 1)
-        default_fin_comp = date(año_comparar, 12, 31)
-        
-        col_fecha_comp1, col_fecha_comp2 = st.columns(2)
-        with col_fecha_comp1:
-            fecha_inicio_comp = st.date_input(
-                "Fecha inicial",
-                value=default_inicio_comp,
-                key="fecha_inicio_comp"
-            )
-        with col_fecha_comp2:
-            fecha_fin_comp = st.date_input(
-                "Fecha final",
-                value=default_fin_comp,
-                key="fecha_fin_comp"
-            )
-        
-        # Convertir a Timestamp
-        fecha_inicio_comp_dt = pd.Timestamp(fecha_inicio_comp)
-        fecha_fin_comp_dt = pd.Timestamp(fecha_fin_comp)
-        
-        if fecha_inicio_comp_dt > fecha_fin_comp_dt:
-            st.error("La fecha inicial debe ser menor o igual a la fecha final")
-            fecha_inicio_comp_dt, fecha_fin_comp_dt = fecha_fin_comp_dt, fecha_inicio_comp_dt
-            fecha_inicio_comp, fecha_fin_comp = fecha_fin_comp, fecha_inicio_comp
+        df_comp_year = df[df["anio"] == año_comparar]
+        if not df_comp_year.empty:
+            min_fecha_comp = df_comp_year["fecha"].min().date()
+            max_fecha_comp = df_comp_year["fecha"].max().date()
+            
+            col_fecha_comp1, col_fecha_comp2 = st.columns(2)
+            with col_fecha_comp1:
+                fecha_inicio_comp = st.date_input(
+                    "Fecha inicial",
+                    value=min_fecha_comp,
+                    min_value=min_fecha_comp,
+                    max_value=max_fecha_comp,
+                    key="fecha_inicio_comp"
+                )
+            with col_fecha_comp2:
+                fecha_fin_comp = st.date_input(
+                    "Fecha final",
+                    value=max_fecha_comp,
+                    min_value=min_fecha_comp,
+                    max_value=max_fecha_comp,
+                    key="fecha_fin_comp"
+                )
+            
+            # Convertir a datetime para filtrado
+            fecha_inicio_comp_dt = pd.Timestamp(fecha_inicio_comp)
+            fecha_fin_comp_dt = pd.Timestamp(fecha_fin_comp)
+            
+            if fecha_inicio_comp_dt > fecha_fin_comp_dt:
+                st.error("La fecha inicial debe ser menor o igual a la fecha final")
+                fecha_inicio_comp_dt, fecha_fin_comp_dt = fecha_fin_comp_dt, fecha_inicio_comp_dt
+                fecha_inicio_comp, fecha_fin_comp = fecha_fin_comp, fecha_inicio_comp
+        else:
+            st.warning(f"No hay datos para {año_comparar}")
+            fecha_inicio_comp_dt = None
+            fecha_fin_comp_dt = None
+            fecha_inicio_comp = None
+            fecha_fin_comp = None
     
     else:
-        # Filtros comunes (SIN RESTRICCIONES DE FECHA)
+        # Filtros comunes (mismo rango para ambos años)
         st.markdown("#### 📅 Período común")
         
-        # Usar el año actual como referencia para las fechas por defecto
-        año_referencia = datetime.now().year
-        default_inicio = date(año_referencia, 1, 1)
-        default_fin = date(año_referencia, 12, 31)
+        # Preparar fechas globales
+        fecha_min = df["fecha"].min().date()
+        fecha_max = df["fecha"].max().date()
         
         col_fecha1, col_fecha2 = st.columns(2)
         with col_fecha1:
             fecha_inicio_sel = st.date_input(
                 "Fecha inicial",
-                value=default_inicio,
+                value=fecha_min,
+                min_value=fecha_min,
+                max_value=fecha_max,
                 key="fecha_inicio_comun"
             )
         with col_fecha2:
             fecha_fin_sel = st.date_input(
                 "Fecha final",
-                value=default_fin,
+                value=fecha_max,
+                min_value=fecha_min,
+                max_value=fecha_max,
                 key="fecha_fin_comun"
             )
         
@@ -374,8 +393,9 @@ with st.sidebar:
             st.error("La fecha inicial debe ser menor o igual a la fecha final")
             fecha_inicio, fecha_fin = fecha_fin, fecha_inicio
         
-        # Calcular fechas equivalentes en el año base para el modo común
-        # (Mantiene la lógica de ajuste por año bisiesto)
+        # Calcular fechas equivalentes en año base
+        dias_en_rango = (fecha_fin - fecha_inicio).days + 1
+        
         try:
             fecha_inicio_base = fecha_inicio.replace(year=año_base)
             fecha_fin_base = fecha_fin.replace(year=año_base)
@@ -415,11 +435,12 @@ with st.sidebar:
     
     if filtros_independientes:
         filter_html = '<div class="active-filters">'
-        # Mostrar fechas aunque no tengan datos asociados
-        filter_html += f'<span class="filter-badge">📅 {año_base}: {fecha_inicio_base.strftime("%d/%m/%Y")} - {fecha_fin_base.strftime("%d/%m/%Y")}</span>'
-        filter_html += f'<span class="filter-badge">📅 {año_comparar}: {fecha_inicio_comp.strftime("%d/%m/%Y")} - {fecha_fin_comp.strftime("%d/%m/%Y")}</span>'
+        if fecha_inicio_base and fecha_fin_base:
+            filter_html += f'<span class="filter-badge">📅 {año_base}: {fecha_inicio_base.strftime("%d/%m/%Y")} - {fecha_fin_base.strftime("%d/%m/%Y")}</span>'
+        
+        if fecha_inicio_comp and fecha_fin_comp:
+            filter_html += f'<span class="filter-badge">📅 {año_comparar}: {fecha_inicio_comp.strftime("%d/%m/%Y")} - {fecha_fin_comp.strftime("%d/%m/%Y")}</span>'
     else:
-        dias_en_rango = (fecha_fin - fecha_inicio).days + 1
         filter_html = f'''
         <div class="active-filters">
             <span class="filter-badge">📅 {fecha_inicio.strftime("%d/%m/%Y")} - {fecha_fin.strftime("%d/%m/%Y")}</span>
@@ -429,30 +450,34 @@ with st.sidebar:
     filter_html += f'<span class="filter-badge">🏷️ {len(secciones_seleccionadas)} secciones</span></div>'
     st.markdown(filter_html, unsafe_allow_html=True)
 
-# ---------- APLICAR FILTROS (MODIFICADO CON PROYECCIONES) ----------
+# ---------- APLICAR FILTROS ----------
 if filtros_independientes:
     # Filtrar con períodos independientes
-    datos_base = df[
-        (df["anio"] == año_base) &
-        (df["fecha"] >= fecha_inicio_base_dt) &
-        (df["fecha"] <= fecha_fin_base_dt) &
-        (df["secciones"].isin(secciones_seleccionadas))
-    ].copy()
+    if fecha_inicio_base_dt is not None and fecha_fin_base_dt is not None:
+        datos_base = df[
+            (df["anio"] == año_base) &
+            (df["fecha"] >= fecha_inicio_base_dt) &
+            (df["fecha"] <= fecha_fin_base_dt) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        ]
+        periodo_desc_base = f"{fecha_inicio_base.strftime('%d/%m/%Y')} - {fecha_fin_base.strftime('%d/%m/%Y')}"
+    else:
+        datos_base = pd.DataFrame()
+        periodo_desc_base = "sin datos"
     
-    datos_comparar = df[
-        (df["anio"] == año_comparar) &
-        (df["fecha"] >= fecha_inicio_comp_dt) &
-        (df["fecha"] <= fecha_fin_comp_dt) &
-        (df["secciones"].isin(secciones_seleccionadas))
-    ].copy()
+    if fecha_inicio_comp_dt is not None and fecha_fin_comp_dt is not None:
+        datos_comparar = df[
+            (df["anio"] == año_comparar) &
+            (df["fecha"] >= fecha_inicio_comp_dt) &
+            (df["fecha"] <= fecha_fin_comp_dt) &
+            (df["secciones"].isin(secciones_seleccionadas))
+        ]
+        periodo_desc_comp = f"{fecha_inicio_comp.strftime('%d/%m/%Y')} - {fecha_fin_comp.strftime('%d/%m/%Y')}"
+    else:
+        datos_comparar = pd.DataFrame()
+        periodo_desc_comp = "sin datos"
     
-    periodo_desc_base = f"{fecha_inicio_base.strftime('%d/%m/%Y')} - {fecha_fin_base.strftime('%d/%m/%Y')}"
-    periodo_desc_comp = f"{fecha_inicio_comp.strftime('%d/%m/%Y')} - {fecha_fin_comp.strftime('%d/%m/%Y')}"
     periodo_desc = f"Períodos independientes: {año_base} ({periodo_desc_base}) vs {año_comparar} ({periodo_desc_comp})"
-    
-    # Guardar fechas para uso posterior
-    fecha_inicio_actual = fecha_inicio_comp_dt
-    fecha_fin_actual = fecha_fin_comp_dt
     
 else:
     # Filtrar con mismo período
@@ -461,218 +486,19 @@ else:
         (df["fecha"] >= fecha_inicio_base) &
         (df["fecha"] <= fecha_fin_base) &
         (df["secciones"].isin(secciones_seleccionadas))
-    ].copy()
+    ]
     
     datos_comparar = df[
         (df["anio"] == año_comparar) & 
         (df["fecha"] >= fecha_inicio) &
         (df["fecha"] <= fecha_fin) &
         (df["secciones"].isin(secciones_seleccionadas))
-    ].copy()
+    ]
     
     if dias_en_rango == 1:
         periodo_desc = f"día {fecha_inicio.strftime('%d/%m/%Y')}"
     else:
         periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
-    
-    fecha_inicio_actual = fecha_inicio
-    fecha_fin_actual = fecha_fin
-
-# ---------- GENERAR DATOS PROYECTADOS PARA AÑOS SIN DATOS ----------
-es_proyeccion = False
-if not datos_base.empty and datos_comparar.empty and año_comparar > datetime.now().year:
-    es_proyeccion = True
-    st.info(f"📊 **Modo Proyección**: Generando datos estimados para {año_comparar} basados en {año_base} + {crecimiento_presupuesto}%")
-    
-    # Generar datos proyectados para el año comparar
-    from datetime import timedelta
-    
-    # Calcular factor de crecimiento
-    factor_crecimiento = 1 + (crecimiento_presupuesto / 100)
-    
-    # Crear rango de fechas para el período seleccionado
-    dias_rango = (fecha_fin_actual - fecha_inicio_actual).days + 1
-    fechas_proyectadas = [fecha_inicio_actual + timedelta(days=i) for i in range(dias_rango)]
-    
-    # Obtener secciones únicas
-    secciones_unicas = secciones_seleccionadas if secciones_seleccionadas else df["secciones"].unique()
-    
-    # Calcular promedios diarios por sección del año base
-    datos_proyectados = []
-    for seccion in secciones_unicas:
-        datos_seccion_base = datos_base[datos_base["secciones"] == seccion]
-        
-        if not datos_seccion_base.empty:
-            # Calcular promedios diarios
-            venta_promedio = datos_seccion_base["venta"].mean() * factor_crecimiento
-            entradas_promedio = datos_seccion_base["entradas"].mean() * factor_crecimiento
-            tickets_promedio = datos_seccion_base["tickets"].mean() * factor_crecimiento
-            ticket_promedio = datos_seccion_base["ticket_promedio"].mean() * factor_crecimiento
-            articulos_promedio = datos_seccion_base["articulos"].mean() * factor_crecimiento
-            articulos_por_ticket = datos_seccion_base["articulos_por_ticket"].mean()
-            tasa_conversion = datos_seccion_base["tasa_conversion"].mean()
-        else:
-            # Si no hay datos de la sección, usar promedios generales
-            venta_promedio = datos_base["venta"].mean() * factor_crecimiento
-            entradas_promedio = datos_base["entradas"].mean() * factor_crecimiento
-            tickets_promedio = datos_base["tickets"].mean() * factor_crecimiento
-            ticket_promedio = datos_base["ticket_promedio"].mean() * factor_crecimiento
-            articulos_promedio = datos_base["articulos"].mean() * factor_crecimiento
-            articulos_por_ticket = datos_base["articulos_por_ticket"].mean()
-            tasa_conversion = datos_base["tasa_conversion"].mean()
-        
-        # Generar registro para cada fecha
-        for fecha in fechas_proyectadas:
-            # Añadir variación aleatoria para simular datos realistas (±10%)
-            import random
-            variacion = random.uniform(0.9, 1.1)
-            
-            datos_proyectados.append({
-                "fecha": fecha,
-                "secciones": seccion,
-                "entradas": int(entradas_promedio * variacion),
-                "venta": venta_promedio * variacion,
-                "tickets": int(tickets_promedio * variacion),
-                "articulos": int(articulos_promedio * variacion),
-                "ticket_promedio": ticket_promedio * variacion,
-                "articulos_por_ticket": articulos_por_ticket * variacion,
-                "tasa_conversion": tasa_conversion * variacion,
-                "anio": año_comparar,
-                "es_proyeccion": True
-            })
-    
-    # Crear DataFrame con datos proyectados
-    datos_proyectados_df = pd.DataFrame(datos_proyectados)
-    
-    # Reemplazar datos_comparar con los datos proyectados
-    datos_comparar = datos_proyectados_df
-
-# ---------- KPIS CON PRESUPUESTO ----------
-st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
-
-if datos_base.empty and datos_comparar.empty:
-    st.warning("No hay datos para los períodos seleccionados")
-    st.stop()
-
-# Mostrar información de registros
-col_reg1, col_reg2 = st.columns(2)
-with col_reg1:
-    if not datos_base.empty:
-        dias_base = datos_base['fecha'].dt.date.nunique()
-        st.info(f"📅 **{año_base}:** {len(datos_base)} registros • {dias_base} días con datos")
-    else:
-        st.warning(f"⚠️ No hay datos para {año_base} en el período seleccionado")
-
-with col_reg2:
-    if not datos_comparar.empty:
-        if es_proyeccion:
-            dias_comp = len(datos_comparar['fecha'].dt.date.unique())
-            st.info(f"📊 **{año_comparar} (PROYECCIÓN):** {dias_comp} días proyectados • +{crecimiento_presupuesto}% vs {año_base}")
-        else:
-            dias_comp = datos_comparar['fecha'].dt.date.nunique()
-            st.info(f"📅 **{año_comparar}:** {len(datos_comparar)} registros • {dias_comp} días con datos")
-    else:
-        st.warning(f"⚠️ No hay datos para {año_comparar} en el período seleccionado")
-
-# Calcular métricas si hay datos en ambos años
-if not datos_base.empty and not datos_comparar.empty:
-    ventas_base = datos_base["venta"].sum()
-    ventas_comp = datos_comparar["venta"].sum()
-    entradas_base = datos_base["entradas"].sum()
-    entradas_comp = datos_comparar["entradas"].sum()
-    
-    tickets_base = datos_base["tickets"].sum()
-    tickets_comp = datos_comparar["tickets"].sum()
-    
-    ticket_base = ventas_base / tickets_base if tickets_base > 0 else 0
-    ticket_comp = ventas_comp / tickets_comp if tickets_comp > 0 else 0
-    
-    tasa_base = datos_base["tasa_conversion"].mean()
-    tasa_comp = datos_comparar["tasa_conversion"].mean()
-    
-    # Calcular presupuesto con crecimiento
-    if mostrar_presupuesto:
-        presupuesto = ventas_base * (1 + crecimiento_presupuesto / 100)
-        cumplimiento_presupuesto = (ventas_comp / presupuesto * 100) if presupuesto > 0 else 0
-
-    # ... (resto del código de KPIs igual) ...
-
-    # ---------- GRÁFICOS CON SOPORTE PARA PROYECCIONES ----------
-    st.markdown(f'<div class="section-title">📊 Análisis Visual { "(con proyección)" if es_proyeccion else "" }</div>', unsafe_allow_html=True)
-
-    # Preparar datos para gráficos
-    if es_proyeccion:
-        # Si es proyección, mostrar solo los datos proyectados
-        df_plot = datos_comparar.copy()
-        df_plot['tipo'] = 'Proyección'
-        df_plot['año_str'] = df_plot['anio'].astype(str) + ' (Proy.)'
-        
-        # Crear gráfico simple de proyección
-        df_diario = df_plot.groupby('fecha')['venta'].sum().reset_index()
-        
-        fig_proy = go.Figure()
-        fig_proy.add_trace(go.Scatter(
-            x=df_diario['fecha'],
-            y=df_diario['venta'],
-            mode='lines+markers',
-            name=f'Proyección {año_comparar}',
-            line=dict(color='#ff7f0e', width=3, dash='dash'),
-            marker=dict(size=8),
-            text=df_diario['venta'].apply(lambda x: f'${x:,.0f}'),
-            textposition='top center',
-        ))
-        
-        # Añadir línea del objetivo (presupuesto promedio diario)
-        if mostrar_presupuesto:
-            presupuesto_diario = presupuesto / len(df_diario)
-            fig_proy.add_hline(
-                y=presupuesto_diario,
-                line_dash="dot",
-                line_color="green",
-                annotation_text=f"Objetivo diario: ${presupuesto_diario:,.0f}",
-                annotation_position="bottom right"
-            )
-        
-        fig_proy.update_layout(
-            title=f'Proyección Diaria de Ventas - {año_comparar}',
-            xaxis_title='Fecha',
-            yaxis_title='Ventas ($)',
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            hovermode='x unified'
-        )
-        
-        st.plotly_chart(fig_proy, use_container_width=True)
-        
-        # Mostrar tabla con proyección detallada
-        with st.expander("📋 Ver detalle de proyección diaria", expanded=False):
-            df_detalle_proy = df_plot.groupby('fecha').agg({
-                'venta': 'sum',
-                'entradas': 'sum',
-                'tickets': 'sum',
-                'ticket_promedio': 'mean'
-            }).round(2).reset_index()
-            
-            df_detalle_proy['fecha'] = df_detalle_proy['fecha'].dt.strftime('%d/%m/%Y')
-            df_detalle_proy.columns = ['Fecha', 'Ventas Proy.', 'Entradas Proy.', 'Tickets Proy.', 'Ticket Prom. Proy.']
-            
-            st.dataframe(
-                df_detalle_proy.style.format({
-                    'Ventas Proy.': '${:,.0f}',
-                    'Entradas Proy.': '{:,.0f}',
-                    'Tickets Proy.': '{:,.0f}',
-                    'Ticket Prom. Proy.': '${:,.2f}'
-                }),
-                use_container_width=True
-            )
-        
-    else:
-        # Si hay datos reales, mostrar todos los gráficos normales
-        df_plot = pd.concat([datos_base, datos_comparar])
-        df_plot['mes'] = df_plot['fecha'].dt.month
-        df_plot['año_str'] = df_plot['anio'].astype(str)
-        
-        # ... (resto de los gráficos normales) ...
 
 # ---------- KPIS CON PRESUPUESTO ----------
 st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
