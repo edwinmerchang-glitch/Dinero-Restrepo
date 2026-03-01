@@ -501,7 +501,7 @@ else:
         periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
 
 # ---------- KPIS CON PRESUPUESTO ----------
-st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">)
 
 if datos_base.empty and datos_comparar.empty:
     st.warning("No hay datos para los períodos seleccionados")
@@ -644,10 +644,693 @@ if not datos_base.empty and not datos_comparar.empty:
         elif cumplimiento_presupuesto < 100:
             st.warning(f"📉 Estás {100 - cumplimiento_presupuesto:.1f}% por debajo del presupuesto")
 
-# ---------- RESTO DEL CÓDIGO (GRÁFICOS, ETC) ----------
-# Aquí va todo el código de gráficos que ya tenías antes...
-# (Mantén todo el código de gráficos y visualizaciones que ya funcionaba)
-# Por brevedad, no incluyo todos los gráficos aquí, pero debes mantenerlos
+# ---------- GRÁFICOS EXISTENTES (MANTENER) ----------
+# Estos son los gráficos que ya tenías en tu código original
+# Asegúrate de mantenerlos aquí
+
+st.markdown(f'<div class="section-title">📊 Análisis Visual</div>', unsafe_allow_html=True)
+
+if not datos_base.empty and not datos_comparar.empty:
+    # Preparar datos para gráficos
+    # Combinar datos de ambos años para los gráficos que necesitan vista anual
+    df_plot = pd.concat([datos_base, datos_comparar])
+    df_plot['mes'] = df_plot['fecha'].dt.month
+    df_plot['año_str'] = df_plot['anio'].astype(str)
+    
+    # Diccionario de meses en español
+    meses_es = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    df_plot['mes_nombre'] = df_plot['mes'].map(meses_es)
+    
+    # Gráfico 1: Evolución mensual comparativa
+    df_mensual = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['venta'].sum().reset_index()
+    df_mensual = df_mensual.sort_values('mes')
+    
+    fig1 = go.Figure()
+    
+    for año in [año_base, año_comparar]:
+        df_año = df_mensual[df_mensual['anio'] == año]
+        if not df_año.empty:
+            color = '#1f77b4' if año == año_base else '#ff7f0e'
+            nombre = f"Año {año}"
+            
+            fig1.add_trace(go.Scatter(
+                x=df_año['mes_nombre'],
+                y=df_año['venta'],
+                mode='lines+markers+text',
+                name=nombre,
+                line=dict(color=color, width=3),
+                marker=dict(size=10, symbol='circle'),
+                text=df_año['venta'].apply(lambda x: f'${x/1e6:.1f}M'),
+                textposition='top center',
+                textfont=dict(size=10, color=color),
+                hovertemplate='<b>%{x}</b><br>' +
+                             'Ventas: $%{y:,.0f}<br>' +
+                             '<extra>%{fullData.name}</extra>'
+            ))
+    
+    fig1.update_layout(
+        title=dict(
+            text='Evolución Mensual de Ventas',
+            x=0.5,
+            font=dict(size=20)
+        ),
+        xaxis=dict(
+            title='Mes',
+            tickangle=45,
+            categoryorder='array',
+            categoryarray=list(meses_es.values()),
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=100)
+    )
+    
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Gráfico 2: Barras comparativas por sección
+    st.markdown("### 📊 Comparación por Sección")
+    
+    df_secciones = df_plot.groupby(['secciones', 'anio'])['venta'].sum().reset_index()
+    
+    fig2 = go.Figure()
+    
+    for año in [año_base, año_comparar]:
+        df_año = df_secciones[df_secciones['anio'] == año]
+        if not df_año.empty:
+            color = '#1f77b4' if año == año_base else '#ff7f0e'
+            nombre = f"Año {año}"
+            
+            fig2.add_trace(go.Bar(
+                x=df_año['secciones'],
+                y=df_año['venta'],
+                name=nombre,
+                marker_color=color,
+                text=df_año['venta'].apply(lambda x: f'${x/1e6:.1f}M'),
+                textposition='outside',
+                textfont=dict(size=11),
+                hovertemplate='<b>%{x}</b><br>' +
+                             'Ventas: $%{y:,.0f}<br>' +
+                             '<extra>%{fullData.name}</extra>'
+            ))
+    
+    fig2.update_layout(
+        title=dict(
+            text='Ventas por Sección - Comparativa Anual',
+            x=0.5,
+            font=dict(size=18)
+        ),
+        xaxis=dict(
+            title='Sección',
+            tickangle=45,
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        barmode='group',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=100)
+    )
+    
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Gráfico 3: Distribución de tickets y entradas
+    st.markdown("### 📈 Análisis de Eficiencia")
+    
+    df_eficiencia = df_plot.groupby('anio').agg({
+        'tickets': 'sum',
+        'entradas': 'sum',
+        'ticket_promedio': 'mean',
+        'tasa_conversion': 'mean',
+        'venta': 'sum'
+    }).reset_index()
+    
+    fig3 = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('Tickets vs Entradas', 'Ticket Promedio', 
+                       'Tasa de Conversión', 'Distribución de Ventas'),
+        specs=[
+            [{'type': 'bar'}, {'type': 'bar'}],
+            [{'type': 'bar'}, {'type': 'pie'}]
+        ]
+    )
+    
+    # Gráfico 1: Tickets vs Entradas
+    for i, fila in df_eficiencia.iterrows():
+        año = int(fila['anio'])
+        color = '#1f77b4' if año == año_base else '#ff7f0e'
+        
+        fig3.add_trace(
+            go.Bar(
+                name=f'Tickets {año}',
+                x=[str(año)],
+                y=[fila['tickets']],
+                marker_color=color,
+                text=[f'{fila["tickets"]:,.0f}'],
+                textposition='inside',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+        
+        fig3.add_trace(
+            go.Bar(
+                name=f'Entradas {año}',
+                x=[str(año)],
+                y=[fila['entradas']],
+                marker_color=color,
+                marker_pattern_shape="/" if año == año_comparar else "",
+                text=[f'{fila["entradas"]:,.0f}'],
+                textposition='inside',
+                showlegend=False
+            ),
+            row=1, col=1
+        )
+    
+    # Gráfico 2: Ticket Promedio
+    fig3.add_trace(
+        go.Bar(
+            x=df_eficiencia['anio'].astype(str),
+            y=df_eficiencia['ticket_promedio'],
+            marker_color=['#1f77b4', '#ff7f0e'],
+            text=df_eficiencia['ticket_promedio'].apply(lambda x: f'${x:,.2f}'),
+            textposition='outside',
+            showlegend=False
+        ),
+        row=1, col=2
+    )
+    
+    # Gráfico 3: Tasa de Conversión
+    fig3.add_trace(
+        go.Bar(
+            x=df_eficiencia['anio'].astype(str),
+            y=df_eficiencia['tasa_conversion'],
+            marker_color=['#1f77b4', '#ff7f0e'],
+            text=df_eficiencia['tasa_conversion'].apply(lambda x: f'{x:.2f}%'),
+            textposition='outside',
+            showlegend=False
+        ),
+        row=2, col=1
+    )
+    
+    # Gráfico 4: Distribución de ventas por año
+    fig3.add_trace(
+        go.Pie(
+            labels=[f'Año {int(año)}' for año in df_eficiencia['anio']],
+            values=df_eficiencia['venta'],
+            marker_colors=['#1f77b4', '#ff7f0e'],
+            textinfo='label+percent',
+            textposition='inside',
+            hole=0.3,
+            showlegend=False
+        ),
+        row=2, col=2
+    )
+    
+    fig3.update_layout(
+        height=600,
+        title_text="Métricas de Eficiencia",
+        title_x=0.5,
+        title_font=dict(size=18),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        showlegend=False,
+        barmode='group'
+    )
+    
+    fig3.update_xaxes(gridcolor='lightgray')
+    fig3.update_yaxes(gridcolor='lightgray', tickformat='$,.2f', row=1, col=2)
+    fig3.update_yaxes(gridcolor='lightgray', tickformat='.1f', row=2, col=1)
+    
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    # Gráfico 4: Heatmap de rendimiento por mes y sección
+    st.markdown("### 🔥 Mapa de Calor - Rendimiento por Mes y Sección")
+    
+    # Seleccionar año para el heatmap
+    año_heatmap = st.radio(
+        "Selecciona año para ver el detalle:",
+        [año_base, año_comparar],
+        horizontal=True
+    )
+    
+    df_heat = df_plot[df_plot['anio'] == año_heatmap].copy()
+    
+    if not df_heat.empty:
+        # Crear tabla pivote para el heatmap
+        pivot_heat = df_heat.pivot_table(
+            values='venta',
+            index='secciones',
+            columns='mes_nombre',
+            aggfunc='sum',
+            fill_value=0
+        )
+        
+        # Reordenar meses
+        meses_disponibles = [col for col in list(meses_es.values()) if col in pivot_heat.columns]
+        pivot_heat = pivot_heat[meses_disponibles]
+        
+        if not pivot_heat.empty:
+            fig4 = go.Figure(data=go.Heatmap(
+                z=pivot_heat.values,
+                x=pivot_heat.columns,
+                y=pivot_heat.index,
+                colorscale='Viridis',
+                text=pivot_heat.values,
+                texttemplate='$%{text:,.0f}',
+                textfont={"size": 10},
+                hovertemplate='<b>%{y}</b><br>' +
+                             'Mes: %{x}<br>' +
+                             'Ventas: $%{z:,.0f}<br>' +
+                             '<extra></extra>'
+            ))
+            
+            fig4.update_layout(
+                title=f'Distribución de Ventas {año_heatmap}',
+                xaxis=dict(
+                    title='Mes',
+                    tickangle=45
+                ),
+                yaxis=dict(
+                    title='Sección'
+                ),
+                height=400,
+                plot_bgcolor='white',
+                paper_bgcolor='white'
+            )
+            
+            st.plotly_chart(fig4, use_container_width=True)
+    
+    # Gráfico 5: Tendencia de ticket promedio
+    st.markdown("### 📈 Evolución del Ticket Promedio")
+    
+    df_ticket = df_plot.groupby(['mes', 'mes_nombre', 'anio'])['ticket_promedio'].mean().reset_index()
+    df_ticket = df_ticket.sort_values('mes')
+    
+    fig5 = go.Figure()
+    
+    for año in [año_base, año_comparar]:
+        df_año = df_ticket[df_ticket['anio'] == año]
+        if not df_año.empty:
+            color = '#1f77b4' if año == año_base else '#ff7f0e'
+            nombre = f"Año {año}"
+            
+            fig5.add_trace(go.Scatter(
+                x=df_año['mes_nombre'],
+                y=df_año['ticket_promedio'],
+                mode='lines+markers',
+                name=nombre,
+                line=dict(color=color, width=3, dash='solid'),
+                marker=dict(size=8),
+                hovertemplate='<b>%{x}</b><br>' +
+                             'Ticket Prom.: $%{y:,.2f}<br>' +
+                             '<extra>%{fullData.name}</extra>'
+            ))
+    
+    fig5.update_layout(
+        title='Evolución del Ticket Promedio por Mes',
+        xaxis=dict(
+            title='Mes',
+            tickangle=45,
+            categoryorder='array',
+            categoryarray=list(meses_es.values())
+        ),
+        yaxis=dict(
+            title='Ticket Promedio ($)',
+            tickformat='$,.2f',
+            gridcolor='lightgray'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        )
+    )
+    
+    st.plotly_chart(fig5, use_container_width=True)
+
+else:
+    if datos_base.empty and datos_comparar.empty:
+        st.warning("No hay datos para los años seleccionados en el período equivalente.")
+    elif datos_base.empty:
+        st.info(f"Solo hay datos para {año_comparar} en el {periodo_desc}. Selecciona otro año base para comparar.")
+    else:
+        st.info(f"Solo hay datos para {año_base} en el {periodo_desc}. Selecciona otro año para comparar.")
+
+# ---------- NUEVOS GRÁFICOS DE PRESUPUESTO (AGREGAR AQUÍ) ----------
+# Estos son los nuevos gráficos que comparan evolución con presupuesto
+
+if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
+    st.markdown(f'<div class="section-title">📈 Evolución Comparativa con Presupuesto</div>', unsafe_allow_html=True)
+    
+    # Preparar datos para la gráfica de evolución acumulada
+    # Agrupar por fecha para ambos años y calcular acumulado
+    df_evolucion_base = datos_base.groupby('fecha')['venta'].sum().reset_index()
+    df_evolucion_base = df_evolucion_base.sort_values('fecha')
+    df_evolucion_base['venta_acum'] = df_evolucion_base['venta'].cumsum()
+    df_evolucion_base['año'] = año_base
+    df_evolucion_base['tipo'] = 'Real'
+    
+    df_evolucion_comp = datos_comparar.groupby('fecha')['venta'].sum().reset_index()
+    df_evolucion_comp = df_evolucion_comp.sort_values('fecha')
+    df_evolucion_comp['venta_acum'] = df_evolucion_comp['venta'].cumsum()
+    df_evolucion_comp['año'] = año_comparar
+    df_evolucion_comp['tipo'] = 'Real'
+    
+    # Calcular líneas de presupuesto
+    # Para el año base (presupuesto base = ventas reales acumuladas)
+    if len(df_evolucion_base) > 0:
+        primer_dia_base = df_evolucion_base['fecha'].iloc[0]
+        ultimo_dia_base = df_evolucion_base['fecha'].iloc[-1]
+        dias_totales_base = (ultimo_dia_base - primer_dia_base).days + 1
+        
+        # Presupuesto diario para año base (promedio)
+        presupuesto_diario_base = ventas_base / dias_totales_base if dias_totales_base > 0 else 0
+        
+        # Crear DataFrame para línea de presupuesto base
+        df_presupuesto_base = pd.DataFrame({
+            'fecha': df_evolucion_base['fecha'],
+            'venta_acum': [presupuesto_diario_base * (i + 1) for i in range(len(df_evolucion_base))],
+            'año': año_base,
+            'tipo': 'Presupuesto'
+        })
+    
+    # Para el año comparar (presupuesto = ventas base * (1 + crecimiento))
+    if len(df_evolucion_comp) > 0:
+        primer_dia_comp = df_evolucion_comp['fecha'].iloc[0]
+        ultimo_dia_comp = df_evolucion_comp['fecha'].iloc[-1]
+        dias_totales_comp = (ultimo_dia_comp - primer_dia_comp).days + 1
+        
+        # Presupuesto diario para año comparar
+        presupuesto_diario_comp = presupuesto / dias_totales_comp if dias_totales_comp > 0 else 0
+        
+        # Crear DataFrame para línea de presupuesto comparar
+        df_presupuesto_comp = pd.DataFrame({
+            'fecha': df_evolucion_comp['fecha'],
+            'venta_acum': [presupuesto_diario_comp * (i + 1) for i in range(len(df_evolucion_comp))],
+            'año': año_comparar,
+            'tipo': 'Presupuesto'
+        })
+    
+    # Crear figura con Plotly
+    fig_evolucion = go.Figure()
+    
+    # Línea real año base
+    if not df_evolucion_base.empty:
+        fig_evolucion.add_trace(go.Scatter(
+            x=df_evolucion_base['fecha'],
+            y=df_evolucion_base['venta_acum'],
+            mode='lines+markers',
+            name=f'Real {año_base}',
+            line=dict(color='#1f77b4', width=3),
+            marker=dict(size=6),
+            hovertemplate='<b>%{x|%d/%m/%Y}</b><br>' +
+                         f'Real {año_base}: $%{{y:,.0f}}<br>' +
+                         '<extra></extra>'
+        ))
+    
+    # Línea presupuesto año base
+    if not df_presupuesto_base.empty:
+        fig_evolucion.add_trace(go.Scatter(
+            x=df_presupuesto_base['fecha'],
+            y=df_presupuesto_base['venta_acum'],
+            mode='lines',
+            name=f'Presupuesto {año_base}',
+            line=dict(color='rgba(31, 119, 180, 0.3)', width=2, dash='dash'),
+            hovertemplate='<b>%{x|%d/%m/%Y}</b><br>' +
+                         f'Presupuesto {año_base}: $%{{y:,.0f}}<br>' +
+                         '<extra></extra>'
+        ))
+    
+    # Línea real año comparar
+    if not df_evolucion_comp.empty:
+        fig_evolucion.add_trace(go.Scatter(
+            x=df_evolucion_comp['fecha'],
+            y=df_evolucion_comp['venta_acum'],
+            mode='lines+markers',
+            name=f'Real {año_comparar}',
+            line=dict(color='#ff7f0e', width=3),
+            marker=dict(size=6),
+            hovertemplate='<b>%{x|%d/%m/%Y}</b><br>' +
+                         f'Real {año_comparar}: $%{{y:,.0f}}<br>' +
+                         '<extra></extra>'
+        ))
+    
+    # Línea presupuesto año comparar
+    if not df_presupuesto_comp.empty:
+        fig_evolucion.add_trace(go.Scatter(
+            x=df_presupuesto_comp['fecha'],
+            y=df_presupuesto_comp['venta_acum'],
+            mode='lines',
+            name=f'Presupuesto {año_comparar}',
+            line=dict(color='rgba(255, 127, 14, 0.3)', width=2, dash='dash'),
+            hovertemplate='<b>%{x|%d/%m/%Y}</b><br>' +
+                         f'Presupuesto {año_comparar}: $%{{y:,.0f}}<br>' +
+                         '<extra></extra>'
+        ))
+    
+    # Configurar layout
+    fig_evolucion.update_layout(
+        title=dict(
+            text=f'Evolución Acumulada de Ventas vs Presupuesto (+{crecimiento_presupuesto}%)',
+            x=0.5,
+            font=dict(size=20)
+        ),
+        xaxis=dict(
+            title='Fecha',
+            tickformat='%d/%m/%Y',
+            tickangle=45,
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas Acumuladas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=100)
+    )
+    
+    # Añadir anotación con el objetivo
+    fig_evolucion.add_annotation(
+        x=0.02,
+        y=0.98,
+        xref='paper',
+        yref='paper',
+        text=f'Objetivo {año_comparar}: ${presupuesto:,.0f}',
+        showarrow=False,
+        font=dict(size=12, color='#666'),
+        bgcolor='rgba(255,255,255,0.8)',
+        bordercolor='#ccc',
+        borderwidth=1,
+        borderpad=4
+    )
+    
+    st.plotly_chart(fig_evolucion, use_container_width=True)
+    
+    # Métricas de seguimiento
+    col_comp1, col_comp2, col_comp3 = st.columns(3)
+    
+    with col_comp1:
+        # Comparación con año base
+        if not df_evolucion_comp.empty and not df_evolucion_base.empty:
+            ultimo_valor_comp = df_evolucion_comp['venta_acum'].iloc[-1]
+            ultimo_valor_base = df_evolucion_base['venta_acum'].iloc[-1]
+            diff_base = ((ultimo_valor_comp - ultimo_valor_base) / ultimo_valor_base * 100) if ultimo_valor_base > 0 else 0
+            
+            st.metric(
+                f"vs {año_base}",
+                f"${ultimo_valor_comp:,.0f}",
+                f"{diff_base:+.1f}%",
+                delta_color="normal"
+            )
+    
+    with col_comp2:
+        # Comparación con presupuesto
+        if not df_evolucion_comp.empty and not df_presupuesto_comp.empty:
+            ultimo_real = df_evolucion_comp['venta_acum'].iloc[-1]
+            ultimo_pres = df_presupuesto_comp['venta_acum'].iloc[-1]
+            cumplimiento = (ultimo_real / ultimo_pres * 100) if ultimo_pres > 0 else 0
+            
+            st.metric(
+                "Cumplimiento",
+                f"{cumplimiento:.1f}%",
+                f"${ultimo_real - ultimo_pres:+,.0f}",
+                delta_color="off" if cumplimiento >= 100 else "inverse"
+            )
+    
+    with col_comp3:
+        # Proyección final
+        if not df_evolucion_comp.empty and dias_totales_comp > 0:
+            dias_transcurridos = len(df_evolucion_comp)
+            avance = (dias_transcurridos / dias_totales_comp * 100) if dias_totales_comp > 0 else 0
+            ritmo_diario = ultimo_real / dias_transcurridos if dias_transcurridos > 0 else 0
+            proyeccion = ritmo_diario * dias_totales_comp
+            
+            st.metric(
+                "Proyección final",
+                f"${proyeccion:,.0f}",
+                f"{((proyeccion - presupuesto)/presupuesto*100):+.1f}% vs objetivo",
+                delta_color="normal"
+            )
+    
+    # Gráfico de barras comparativo
+    st.markdown("### 📊 Comparación por Año")
+    
+    periodos = [str(año_base), str(año_comparar)]
+    valores_reales = [ventas_base, ventas_comp]
+    valores_presupuesto = [ventas_base, presupuesto]
+    
+    fig_barras = go.Figure()
+    
+    # Barras de real
+    fig_barras.add_trace(go.Bar(
+        name='Real',
+        x=periodos,
+        y=valores_reales,
+        marker_color=['#1f77b4', '#ff7f0e'],
+        text=[f'${v:,.0f}' for v in valores_reales],
+        textposition='outside',
+        hovertemplate='<b>%{x}</b><br>' +
+                     'Real: $%{y:,.0f}<br>' +
+                     '<extra></extra>'
+    ))
+    
+    # Línea de presupuesto
+    fig_barras.add_trace(go.Scatter(
+        name='Presupuesto',
+        x=periodos,
+        y=valores_presupuesto,
+        mode='markers+lines',
+        marker=dict(
+            symbol='diamond',
+            size=15,
+            color=['#1f77b4', '#ff7f0e'],
+            line=dict(color='white', width=2)
+        ),
+        line=dict(
+            color='rgba(0,0,0,0.3)',
+            width=2,
+            dash='dot'
+        ),
+        text=[f'${v:,.0f}' for v in valores_presupuesto],
+        textposition='top center',
+        hovertemplate='<b>%{x}</b><br>' +
+                     'Presupuesto: $%{y:,.0f}<br>' +
+                     '<extra></extra>'
+    ))
+    
+    fig_barras.update_layout(
+        title=dict(
+            text='Ventas Reales vs Presupuesto',
+            x=0.5,
+            font=dict(size=18)
+        ),
+        xaxis=dict(
+            title='Año',
+            gridcolor='lightgray'
+        ),
+        yaxis=dict(
+            title='Ventas ($)',
+            gridcolor='lightgray',
+            tickformat='$,.0f'
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        barmode='group',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        ),
+        margin=dict(b=50)
+    )
+    
+    st.plotly_chart(fig_barras, use_container_width=True)
+    
+    # Tabla resumen
+    st.markdown("### 📋 Resumen Comparativo")
+    
+    # Calcular promedios diarios
+    promedio_diario_base = ventas_base / dias_base if dias_base > 0 else 0
+    promedio_diario_comp = ventas_comp / dias_comp if dias_comp > 0 else 0
+    
+    df_resumen = pd.DataFrame({
+        'Métrica': ['Ventas Totales', 'Días con datos', 'Promedio diario', 'vs Presupuesto'],
+        str(año_base): [
+            f'${ventas_base:,.0f}',
+            f'{dias_base} días',
+            f'${promedio_diario_base:,.0f}',
+            'Base'
+        ],
+        str(año_comparar): [
+            f'${ventas_comp:,.0f}',
+            f'{dias_comp} días',
+            f'${promedio_diario_comp:,.0f}',
+            f'{cumplimiento_presupuesto:.1f}%'
+        ],
+        'Variación': [
+            f'{((ventas_comp-ventas_base)/ventas_base*100):+.1f}%' if ventas_base > 0 else 'N/A',
+            f'{((dias_comp-dias_base)/dias_base*100):+.1f}%' if dias_base > 0 else 'N/A',
+            f'{((promedio_diario_comp - promedio_diario_base)/promedio_diario_base*100):+.1f}%' if promedio_diario_base > 0 else 'N/A',
+            f'{cumplimiento_presupuesto-100:+.1f}%'
+        ]
+    })
+    
+    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+
+# ---------- COMPARACIÓN DÍA A DÍA (MANTENER) ----------
+# Aquí va tu código existente de comparación día a día
+# (el que ya tenías funcionando)
+
+# ---------- DATOS DETALLADOS (MANTENER) ----------
+# Aquí va tu código existente de datos detallados
+
+# ---------- ADMINISTRACIÓN (MANTENER) ----------
+# Aquí va tu código existente de administración
 
 # ---------- ADMINISTRACIÓN ----------
 with st.expander("⚙️ Administración", expanded=False):
