@@ -501,7 +501,7 @@ else:
         periodo_desc = f"período {fecha_inicio.strftime('%d/%m')} - {fecha_fin.strftime('%d/%m')}"
 
 # ---------- KPIS CON PRESUPUESTO ----------
-st.markdown(f'<div class="section-title">)
+st.markdown(f'<div class="section-title">📈 Comparación General: {año_base} vs {año_comparar} ({periodo_desc})</div>', unsafe_allow_html=True)
 
 if datos_base.empty and datos_comparar.empty:
     st.warning("No hay datos para los períodos seleccionados")
@@ -644,10 +644,7 @@ if not datos_base.empty and not datos_comparar.empty:
         elif cumplimiento_presupuesto < 100:
             st.warning(f"📉 Estás {100 - cumplimiento_presupuesto:.1f}% por debajo del presupuesto")
 
-# ---------- GRÁFICOS EXISTENTES (MANTENER) ----------
-# Estos son los gráficos que ya tenías en tu código original
-# Asegúrate de mantenerlos aquí
-
+# ---------- GRÁFICOS EXISTENTES ----------
 st.markdown(f'<div class="section-title">📊 Análisis Visual</div>', unsafe_allow_html=True)
 
 if not datos_base.empty and not datos_comparar.empty:
@@ -1009,9 +1006,7 @@ else:
     else:
         st.info(f"Solo hay datos para {año_base} en el {periodo_desc}. Selecciona otro año para comparar.")
 
-# ---------- NUEVOS GRÁFICOS DE PRESUPUESTO (AGREGAR AQUÍ) ----------
-# Estos son los nuevos gráficos que comparan evolución con presupuesto
-
+# ---------- NUEVOS GRÁFICOS DE PRESUPUESTO ----------
 if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     st.markdown(f'<div class="section-title">📈 Evolución Comparativa con Presupuesto</div>', unsafe_allow_html=True)
     
@@ -1204,7 +1199,6 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
         # Proyección final
         if not df_evolucion_comp.empty and dias_totales_comp > 0:
             dias_transcurridos = len(df_evolucion_comp)
-            avance = (dias_transcurridos / dias_totales_comp * 100) if dias_totales_comp > 0 else 0
             ritmo_diario = ultimo_real / dias_transcurridos if dias_transcurridos > 0 else 0
             proyeccion = ritmo_diario * dias_totales_comp
             
@@ -1322,15 +1316,168 @@ if not datos_base.empty and not datos_comparar.empty and mostrar_presupuesto:
     
     st.dataframe(df_resumen, use_container_width=True, hide_index=True)
 
-# ---------- COMPARACIÓN DÍA A DÍA (MANTENER) ----------
-# Aquí va tu código existente de comparación día a día
-# (el que ya tenías funcionando)
+# ---------- COMPARACIÓN DÍA A DÍA ----------
+st.markdown(f'<div class="section-title">📅 Comparación Día a Día</div>', unsafe_allow_html=True)
 
-# ---------- DATOS DETALLADOS (MANTENER) ----------
-# Aquí va tu código existente de datos detallados
+if not datos_base.empty and not datos_comparar.empty:
+    
+    st.info("""
+    **🔍 Compara un día específico de cada año**
+    
+    Selecciona una fecha de cada año para ver cómo se comparan las métricas. 
+    Puedes buscar el mismo día (mismo mes y día) en ambos años con el botón "🔄 Mismo día".
+    """)
+    
+    # Selectores de fecha
+    col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
+    
+    with col_cal1:
+        st.markdown(f"### **{año_base}**")
+        fechas_base = sorted(datos_base["fecha"].dt.date.unique())
+        
+        fecha_base = st.selectbox(
+            "Selecciona fecha",
+            options=fechas_base,
+            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+            key="fecha_base_select"
+        )
+    
+    with col_cal2:
+        st.markdown(f"### **{año_comparar}**")
+        fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
+        
+        fecha_comp = st.selectbox(
+            "Selecciona fecha",
+            options=fechas_comp,
+            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
+            key="fecha_comp_select"
+        )
+    
+    with col_cal3:
+        st.markdown("### **Acciones**")
+        
+        if st.button("🔄 Mismo día", use_container_width=True, type="primary"):
+            # Buscar mismo mes/día
+            fecha_encontrada = False
+            for f_base in fechas_base:
+                for f_comp in fechas_comp:
+                    if f_base.month == f_comp.month and f_base.day == f_comp.day:
+                        fecha_base = f_base
+                        fecha_comp = f_comp
+                        fecha_encontrada = True
+                        st.success(f"✓ {f_base.strftime('%d de %B')} encontrado en ambos años")
+                        st.rerun()
+                        break
+                if fecha_encontrada:
+                    break
+            
+            if not fecha_encontrada:
+                st.warning("No se encontró el mismo día en ambos años")
+    
+    # Mostrar comparación si hay fechas seleccionadas
+    if fecha_base and fecha_comp:
+        datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
+        datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
+        
+        if not datos_dia_base.empty and not datos_dia_comp.empty:
+            st.markdown("---")
+            st.markdown(f"## 📊 Comparación: {fecha_base.strftime('%d/%m/%Y')} vs {fecha_comp.strftime('%d/%m/%Y')}")
+            
+            # Calcular métricas del día
+            venta_base = datos_dia_base["venta"].sum()
+            venta_comp = datos_dia_comp["venta"].sum()
+            entradas_base = datos_dia_base["entradas"].sum()
+            entradas_comp = datos_dia_comp["entradas"].sum()
+            tickets_base = datos_dia_base["tickets"].sum()
+            tickets_comp = datos_dia_comp["tickets"].sum()
+            
+            ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
+            ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
+            
+            tasa_base = datos_dia_base["tasa_conversion"].mean()
+            tasa_comp = datos_dia_comp["tasa_conversion"].mean()
+            
+            # Mostrar KPIs del día
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+            
+            delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
+            with col_d1:
+                st.metric(
+                    f"Ventas {año_comparar}",
+                    f"${venta_comp:,.0f}",
+                    f"{delta_venta:+.1f}%" if delta_venta else None
+                )
+            
+            delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+            with col_d2:
+                st.metric(
+                    f"Entradas {año_comparar}",
+                    f"{entradas_comp:,.0f}",
+                    f"{delta_ent:+.1f}%" if delta_ent else None
+                )
+            
+            delta_ticket = ((ticket_prom_comp - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
+            with col_d3:
+                st.metric(
+                    f"Ticket Prom. {año_comparar}",
+                    f"${ticket_prom_comp:,.2f}",
+                    f"{delta_ticket:+.1f}%" if delta_ticket else None
+                )
+            
+            delta_tasa = tasa_comp - tasa_base
+            with col_d4:
+                st.metric(
+                    f"Tasa Conv. {año_comparar}",
+                    f"{tasa_comp:.2f}%",
+                    f"{delta_tasa:+.2f} pp"
+                )
 
-# ---------- ADMINISTRACIÓN (MANTENER) ----------
-# Aquí va tu código existente de administración
+# ---------- DATOS DETALLADOS ----------
+with st.expander("📋 Ver datos detallados", expanded=False):
+    tab1, tab2 = st.tabs(["Resumen por Período", "Registros Detallados"])
+    
+    with tab1:
+        # Crear resumen para los períodos seleccionados
+        resumen_data = []
+        
+        if not datos_base.empty:
+            resumen_data.append({
+                "Año": año_base,
+                "Período": periodo_desc,
+                "Ventas Totales": f"${datos_base['venta'].sum():,.0f}",
+                "Entradas Totales": f"{datos_base['entradas'].sum():,.0f}",
+                "Tickets Totales": f"{datos_base['tickets'].sum():,.0f}",
+                "Ticket Prom.": f"${datos_base['venta'].sum()/datos_base['tickets'].sum():,.2f}" if datos_base['tickets'].sum() > 0 else "N/A",
+                "Tasa Conv.": f"{datos_base['tasa_conversion'].mean():.2f}%"
+            })
+        
+        if not datos_comparar.empty:
+            resumen_data.append({
+                "Año": año_comparar,
+                "Período": periodo_desc,
+                "Ventas Totales": f"${datos_comparar['venta'].sum():,.0f}",
+                "Entradas Totales": f"{datos_comparar['entradas'].sum():,.0f}",
+                "Tickets Totales": f"{datos_comparar['tickets'].sum():,.0f}",
+                "Ticket Prom.": f"${datos_comparar['venta'].sum()/datos_comparar['tickets'].sum():,.2f}" if datos_comparar['tickets'].sum() > 0 else "N/A",
+                "Tasa Conv.": f"{datos_comparar['tasa_conversion'].mean():.2f}%"
+            })
+        
+        resumen_df = pd.DataFrame(resumen_data)
+        st.dataframe(resumen_df, use_container_width=True)
+    
+    with tab2:
+        # Mostrar todos los registros del período seleccionado
+        df_detalle = pd.concat([datos_base, datos_comparar]) if not datos_base.empty or not datos_comparar.empty else pd.DataFrame()
+        if not df_detalle.empty:
+            st.dataframe(
+                df_detalle.sort_values(["anio", "fecha"], ascending=[False, False])
+                .style.format({
+                    "venta": "${:,.0f}",
+                    "ticket_promedio": "${:,.2f}",
+                    "tasa_conversion": "{:.2f}%"
+                }),
+                use_container_width=True
+            )
 
 # ---------- ADMINISTRACIÓN ----------
 with st.expander("⚙️ Administración", expanded=False):
