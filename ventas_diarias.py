@@ -1329,50 +1329,71 @@ if not datos_base.empty and not datos_comparar.empty:
     """)
     
     # Selectores de fecha
-    col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
-    
-    with col_cal1:
-        st.markdown(f"### **{año_base}**")
-        fechas_base = sorted(datos_base["fecha"].dt.date.unique())
-        
-        fecha_base = st.selectbox(
+col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
+
+with col_cal1:
+    st.markdown(f"### **{año_base}**")
+
+    fechas_base = sorted(datos_base["fecha"].dt.date.unique())
+
+    if len(fechas_base) > 0:
+        min_base = min(fechas_base)
+        max_base = max(fechas_base)
+
+        fecha_base = st.date_input(
             "Selecciona fecha",
-            options=fechas_base,
-            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
-            key="fecha_base_select"
+            value=min_base,
+            min_value=min_base,
+            max_value=max_base,
+            key="fecha_base_calendar"
         )
-    
-    with col_cal2:
-        st.markdown(f"### **{año_comparar}**")
-        fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
-        
-        fecha_comp = st.selectbox(
+    else:
+        fecha_base = None
+        st.warning("No hay fechas disponibles para este año")
+
+
+with col_cal2:
+    st.markdown(f"### **{año_comparar}**")
+
+    fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
+
+    if len(fechas_comp) > 0:
+        min_comp = min(fechas_comp)
+        max_comp = max(fechas_comp)
+
+        fecha_comp = st.date_input(
             "Selecciona fecha",
-            options=fechas_comp,
-            format_func=lambda x: x.strftime("%A %d de %B, %Y") if hasattr(x, 'strftime') else str(x),
-            key="fecha_comp_select"
+            value=min_comp,
+            min_value=min_comp,
+            max_value=max_comp,
+            key="fecha_comp_calendar"
         )
-    
-    with col_cal3:
-        st.markdown("### **Acciones**")
-        
-        if st.button("🔄 Mismo día", use_container_width=True, type="primary"):
-            # Buscar mismo mes/día
-            fecha_encontrada = False
-            for f_base in fechas_base:
-                for f_comp in fechas_comp:
-                    if f_base.month == f_comp.month and f_base.day == f_comp.day:
-                        fecha_base = f_base
-                        fecha_comp = f_comp
-                        fecha_encontrada = True
-                        st.success(f"✓ {f_base.strftime('%d de %B')} encontrado en ambos años")
-                        st.rerun()
-                        break
-                if fecha_encontrada:
+    else:
+        fecha_comp = None
+        st.warning("No hay fechas disponibles para este año")
+
+
+with col_cal3:
+    st.markdown("### **Acciones**")
+
+    if st.button("🔄 Mismo día", use_container_width=True):
+
+        if fecha_base:
+
+            # Buscar misma fecha (mes/día) en año comparar
+            encontrada = False
+            for f in fechas_comp:
+                if f.month == fecha_base.month and f.day == fecha_base.day:
+                    fecha_comp = f
+                    encontrada = True
                     break
-            
-            if not fecha_encontrada:
-                st.warning("No se encontró el mismo día en ambos años")
+
+            if encontrada:
+                st.success("✓ Mismo día encontrado en ambos años")
+                st.session_state["fecha_comp_calendar"] = fecha_comp
+                st.rerun()
+            else:
+                st.warning("No existe ese mismo día en el otro año")
     
     # Mostrar comparación si hay fechas seleccionadas
     if fecha_base and fecha_comp:
