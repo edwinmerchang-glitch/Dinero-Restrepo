@@ -1479,6 +1479,87 @@ with st.expander("📋 Ver datos detallados", expanded=False):
                 use_container_width=True
             )
 
+# ---------- PROYECCIÓN INTELIGENTE FUTURA ----------
+st.markdown(f'<div class="section-title">🔮 Proyección Inteligente de Venta</div>', unsafe_allow_html=True)
+
+st.info("""
+Proyecta una fecha futura usando:
+• Día de semana equivalente
+• Semana del año
+• Crecimiento real acumulado
+""")
+
+# Trabajar sobre copia segura
+df_proy = df.copy()
+
+if not df_proy.empty:
+
+    df_proy["dia_semana"] = df_proy["fecha"].dt.day_name()
+    df_proy["semana"] = df_proy["fecha"].dt.isocalendar().week
+
+    colp1, colp2 = st.columns(2)
+
+    with colp1:
+        fecha_proyectar = st.date_input(
+            "Selecciona fecha futura",
+            value=datetime.now().date() + timedelta(days=1),
+            key="fecha_proyeccion"
+        )
+
+    with colp2:
+        ambicion_extra = st.slider("Ambición adicional (%)", 0, 20, 5)
+
+    if fecha_proyectar:
+
+        fecha_proyectar = pd.Timestamp(fecha_proyectar)
+        anio_objetivo = fecha_proyectar.year
+        anio_anterior = anio_objetivo - 1
+
+        dia_semana = fecha_proyectar.day_name()
+        semana = fecha_proyectar.isocalendar().week
+
+        # Buscar comparable
+        comparable = df_proy[
+            (df_proy["anio"] == anio_anterior) &
+            (df_proy["dia_semana"] == dia_semana) &
+            (df_proy["semana"] == semana)
+        ]
+
+        if not comparable.empty:
+
+            venta_hist = comparable["venta"].sum()
+
+            total_actual = df_proy[df_proy["anio"] == anio_objetivo]["venta"].sum()
+            total_pasado = df_proy[df_proy["anio"] == anio_anterior]["venta"].sum()
+
+            crecimiento_real = (
+                (total_actual - total_pasado) / total_pasado
+                if total_pasado > 0 else 0
+            )
+
+            proyeccion_base = venta_hist * (1 + crecimiento_real)
+            meta_sugerida = proyeccion_base * (1 + ambicion_extra / 100)
+
+            c1, c2, c3, c4 = st.columns(4)
+
+            c1.metric("Venta Comparable Año Anterior", f"${venta_hist:,.0f}")
+            c2.metric("Crecimiento Real Año Actual", f"{crecimiento_real*100:.2f}%")
+            c3.metric("Proyección Estimada", f"${proyeccion_base:,.0f}")
+            c4.metric("Meta Sugerida", f"${meta_sugerida:,.0f}")
+
+            st.markdown("### 📊 Escenarios")
+
+            esc_conservador = venta_hist * (1 + crecimiento_real * 0.5)
+            esc_agresivo = venta_hist * (1 + crecimiento_real * 1.5)
+
+            e1, e2, e3 = st.columns(3)
+            e1.metric("Conservador", f"${esc_conservador:,.0f}")
+            e2.metric("Realista", f"${proyeccion_base:,.0f}")
+            e3.metric("Agresivo", f"${esc_agresivo:,.0f}")
+
+        else:
+            st.warning("No se encontró día comparable en el año anterior.")
+
 # ---------- ADMINISTRACIÓN ----------
 with st.expander("⚙️ Administración", expanded=False):
     col_admin1, col_admin2 = st.columns(2)
