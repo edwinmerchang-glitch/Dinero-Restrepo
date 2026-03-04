@@ -1325,53 +1325,62 @@ col_cal1, col_cal2, col_cal3 = st.columns([2, 2, 1])
 fechas_base = sorted(datos_base["fecha"].dt.date.unique())
 fechas_comp = sorted(datos_comparar["fecha"].dt.date.unique())
 
+# Inicializar estado si no existe
+if "fecha_base" not in st.session_state and fechas_base:
+    st.session_state.fecha_base = fechas_base[0]
+
+if "fecha_comp" not in st.session_state and fechas_comp:
+    st.session_state.fecha_comp = fechas_comp[0]
+
 with col_cal1:
     st.markdown(f"### **{año_base}**")
 
     if fechas_base:
-        fecha_base = st.date_input(
+        st.session_state.fecha_base = st.date_input(
             "Selecciona fecha",
-            value=fechas_base[0],
+            value=st.session_state.fecha_base,
             min_value=min(fechas_base),
             max_value=max(fechas_base),
-            key="fecha_base"
+            key="cal_base"
         )
     else:
-        fecha_base = None
-        st.warning("No hay fechas disponibles para este año")
+        st.warning("No hay fechas disponibles")
 
 with col_cal2:
     st.markdown(f"### **{año_comparar}**")
 
     if fechas_comp:
-        fecha_comp = st.date_input(
+        st.session_state.fecha_comp = st.date_input(
             "Selecciona fecha",
-            value=fechas_comp[0],
+            value=st.session_state.fecha_comp,
             min_value=min(fechas_comp),
             max_value=max(fechas_comp),
-            key="fecha_comp"
+            key="cal_comp"
         )
     else:
-        fecha_comp = None
-        st.warning("No hay fechas disponibles para este año")
+        st.warning("No hay fechas disponibles")
 
 with col_cal3:
     st.markdown("### **Acciones**")
 
     if st.button("🔄 Mismo día", use_container_width=True):
 
-        if fecha_base and fechas_comp:
+        base = st.session_state.fecha_base
 
-            misma_fecha = [
-                f for f in fechas_comp
-                if f.month == fecha_base.month and f.day == fecha_base.day
-            ]
+        misma_fecha = [
+            f for f in fechas_comp
+            if f.month == base.month and f.day == base.day
+        ]
 
-            if misma_fecha:
-                st.session_state["fecha_comp"] = misma_fecha[0]
-                st.rerun()
-            else:
-                st.warning("Ese día no existe en el año comparado")
+        if misma_fecha:
+            st.session_state.fecha_comp = misma_fecha[0]
+            st.rerun()
+        else:
+            st.warning("Ese día no existe en el año comparado")
+
+# Variables finales para usar en métricas
+fecha_base = st.session_state.fecha_base
+fecha_comp = st.session_state.fecha_comp
     
     # Mostrar comparación si hay fechas seleccionadas
     if fecha_base and fecha_comp:
