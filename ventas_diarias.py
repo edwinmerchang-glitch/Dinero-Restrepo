@@ -1381,64 +1381,64 @@ with col_cal3:
 # Variables finales para usar en métricas
 fecha_base = st.session_state.fecha_base
 fecha_comp = st.session_state.fecha_comp
+
+# Mostrar comparación si hay fechas seleccionadas
+if fecha_base and fecha_comp:  # Esta línea debe tener 0 espacios de indentación
+    datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
+    datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
     
-    # Mostrar comparación si hay fechas seleccionadas
-    if fecha_base and fecha_comp:
-        datos_dia_base = datos_base[datos_base["fecha"].dt.date == fecha_base]
-        datos_dia_comp = datos_comparar[datos_comparar["fecha"].dt.date == fecha_comp]
+    if not datos_dia_base.empty and not datos_dia_comp.empty:
+        st.markdown("---")
+        st.markdown(f"## 📊 Comparación: {fecha_base.strftime('%d/%m/%Y')} vs {fecha_comp.strftime('%d/%m/%Y')}")
         
-        if not datos_dia_base.empty and not datos_dia_comp.empty:
-            st.markdown("---")
-            st.markdown(f"## 📊 Comparación: {fecha_base.strftime('%d/%m/%Y')} vs {fecha_comp.strftime('%d/%m/%Y')}")
-            
-            # Calcular métricas del día
-            venta_base = datos_dia_base["venta"].sum()
-            venta_comp = datos_dia_comp["venta"].sum()
-            entradas_base = datos_dia_base["entradas"].sum()
-            entradas_comp = datos_dia_comp["entradas"].sum()
-            tickets_base = datos_dia_base["tickets"].sum()
-            tickets_comp = datos_dia_comp["tickets"].sum()
-            
-            ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
-            ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
-            
-            tasa_base = datos_dia_base["tasa_conversion"].mean()
-            tasa_comp = datos_dia_comp["tasa_conversion"].mean()
-            
-            # Mostrar KPIs del día
-            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
-            
-            delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
-            with col_d1:
-                st.metric(
-                    f"Ventas {año_comparar}",
-                    f"${venta_comp:,.0f}",
-                    f"{delta_venta:+.1f}%" if delta_venta else None
-                )
-            
-            delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
-            with col_d2:
-                st.metric(
-                    f"Entradas {año_comparar}",
-                    f"{entradas_comp:,.0f}",
-                    f"{delta_ent:+.1f}%" if delta_ent else None
-                )
-            
-            delta_ticket = ((ticket_prom_comp - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
-            with col_d3:
-                st.metric(
-                    f"Ticket Prom. {año_comparar}",
-                    f"${ticket_prom_comp:,.2f}",
-                    f"{delta_ticket:+.1f}%" if delta_ticket else None
-                )
-            
-            delta_tasa = tasa_comp - tasa_base
-            with col_d4:
-                st.metric(
-                    f"Tasa Conv. {año_comparar}",
-                    f"{tasa_comp:.2f}%",
-                    f"{delta_tasa:+.2f} pp"
-                )
+        # Calcular métricas del día
+        venta_base = datos_dia_base["venta"].sum()
+        venta_comp = datos_dia_comp["venta"].sum()
+        entradas_base = datos_dia_base["entradas"].sum()
+        entradas_comp = datos_dia_comp["entradas"].sum()
+        tickets_base = datos_dia_base["tickets"].sum()
+        tickets_comp = datos_dia_comp["tickets"].sum()
+        
+        ticket_prom_base = venta_base / tickets_base if tickets_base > 0 else 0
+        ticket_prom_comp = venta_comp / tickets_comp if tickets_comp > 0 else 0
+        
+        tasa_base = datos_dia_base["tasa_conversion"].mean()
+        tasa_comp = datos_dia_comp["tasa_conversion"].mean()
+        
+        # Mostrar KPIs del día
+        col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+        
+        delta_venta = ((venta_comp - venta_base)/venta_base*100) if venta_base > 0 else None
+        with col_d1:
+            st.metric(
+                f"Ventas {año_comparar}",
+                f"${venta_comp:,.0f}",
+                f"{delta_venta:+.1f}%" if delta_venta else None
+            )
+        
+        delta_ent = ((entradas_comp - entradas_base)/entradas_base*100) if entradas_base > 0 else None
+        with col_d2:
+            st.metric(
+                f"Entradas {año_comparar}",
+                f"{entradas_comp:,.0f}",
+                f"{delta_ent:+.1f}%" if delta_ent else None
+            )
+        
+        delta_ticket = ((ticket_prom_comp - ticket_prom_base)/ticket_prom_base*100) if ticket_prom_base > 0 else None
+        with col_d3:
+            st.metric(
+                f"Ticket Prom. {año_comparar}",
+                f"${ticket_prom_comp:,.2f}",
+                f"{delta_ticket:+.1f}%" if delta_ticket else None
+            )
+        
+        delta_tasa = tasa_comp - tasa_base
+        with col_d4:
+            st.metric(
+                f"Tasa Conv. {año_comparar}",
+                f"{tasa_comp:.2f}%",
+                f"{delta_tasa:+.2f} pp"
+            )
 
 # ---------- DATOS DETALLADOS ----------
 with st.expander("📋 Ver datos detallados", expanded=False):
