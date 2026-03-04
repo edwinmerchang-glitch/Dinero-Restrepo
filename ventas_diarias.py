@@ -1515,7 +1515,7 @@ if not df_proy.empty:
         )
 
     with colp2:
-        ambicion_extra = st.slider("Ambición adicional (%)", 0, 20, 5)
+        ambicion_extra = st.slider("Ambición adicional (%)", 0, 20, 15)
 
     if fecha_proyectar:
 
@@ -1548,12 +1548,13 @@ if not df_proy.empty:
             proyeccion_base = venta_hist * (1 + crecimiento_real)
             meta_sugerida = proyeccion_base * (1 + ambicion_extra / 100)
 
-            c1, c2, c3, c4 = st.columns(4)
+            # Métricas principales
+            col1, col2, col3, col4 = st.columns(4)
 
-            c1.metric("Venta Comparable Año Anterior", f"${venta_hist:,.0f}")
-            c2.metric("Crecimiento Real Año Actual", f"{crecimiento_real*100:.2f}%")
-            c3.metric("Proyección Estimada", f"${proyeccion_base:,.0f}")
-            c4.metric("Meta Sugerida", f"${meta_sugerida:,.0f}")
+            col1.metric("Venta Comparable Año Anterior", f"${venta_hist:,.0f}")
+            col2.metric("Crecimiento Real Año Actual", f"{crecimiento_real*100:.2f}%")
+            col3.metric("Proyección Estimada", f"${proyeccion_base:,.0f}")
+            col4.metric("Meta Sugerida", f"${meta_sugerida:,.0f}")
 
             st.markdown("### 📊 Escenarios")
 
@@ -1565,6 +1566,110 @@ if not df_proy.empty:
             e2.metric("Realista", f"${proyeccion_base:,.0f}")
             e3.metric("Agresivo", f"${esc_agresivo:,.0f}")
 
+            # --- NUEVA SECCIÓN: TOTALES ACUMULADOS ---
+            st.markdown("---")
+            st.markdown("### 💰 Totales Acumulados y Presupuesto")
+            
+            # Calcular totales acumulados hasta la fecha proyectada
+            # Para el año anterior
+            fecha_limite_anterior = pd.Timestamp(year=anio_anterior, month=fecha_proyectar.month, day=fecha_proyectar.day)
+            total_acum_anterior = df_proy[
+                (df_proy["anio"] == anio_anterior) & 
+                (df_proy["fecha"] <= fecha_limite_anterior)
+            ]["venta"].sum()
+            
+            # Para el año actual (hasta ahora)
+            fecha_actual = pd.Timestamp.now()
+            total_acum_actual = df_proy[
+                (df_proy["anio"] == anio_objetivo) & 
+                (df_proy["fecha"] <= fecha_actual)
+            ]["venta"].sum()
+            
+            # Proyección del total del año actual
+            dias_restantes = (pd.Timestamp(year=anio_objetivo, month=12, day=31) - fecha_actual).days
+            if dias_restantes > 0:
+                promedio_diario_actual = total_acum_actual / (fecha_actual.day_of_year if hasattr(fecha_actual, 'day_of_year') else fecha_actual.timetuple().tm_yday)
+                proyeccion_total_anual = total_acum_actual + (promedio_diario_actual * dias_restantes)
+            else:
+                proyeccion_total_anual = total_acum_actual
+            
+            # Presupuesto del año actual (basado en año anterior + crecimiento)
+            presupuesto_anual = total_pasado * (1 + abs(crecimiento_real) if crecimiento_real < 0 else 1 + crecimiento_real)
+            
+            # Mostrar métricas de totales
+            col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+            
+            with col_t1:
+                st.metric(
+                    "Total Acumulado Año Anterior",
+                    f"${total_acum_anterior:,.0f}",
+                    help=f"Hasta {fecha_limite_anterior.strftime('%d/%m/%Y')}"
+                )
+            
+            with col_t2:
+                st.metric(
+                    "Total Acumulado Año Actual",
+                    f"${total_acum_actual:,.0f}",
+                    f"{((total_acum_actual - total_acum_anterior)/total_acum_anterior*100):+.1f}%" if total_acum_anterior > 0 else None,
+                    help=f"Hasta {fecha_actual.strftime('%d/%m/%Y')}"
+                )
+            
+            with col_t3:
+                st.metric(
+                    "Proyección Total Anual",
+                    f"${proyeccion_total_anual:,.0f}",
+                    help="Proyección basada en promedio diario actual"
+                )
+            
+            with col_t4:
+                # Calcular cumplimiento de presupuesto
+                cumplimiento_presupuesto = (proyeccion_total_anual / presupuesto_anual * 100) if presupuesto_anual > 0 else 0
+                delta_color = "normal" if cumplimiento_presupuesto >= 100 else "inverse"
+                
+                st.metric(
+                    "Presupuesto Anual",
+                    f"${presupuesto_anual:,.0f}",
+                    f"{cumplimiento_presupuesto:.1f}% cumplimiento",
+                    delta_color=delta_color
+                )
+            
+            # Barra de progreso del presupuesto
+            st.markdown("#### 📊 Progreso del Presupuesto Anual")
+            progreso_presupuesto = min(total_acum_actual / presupuesto_anual, 1.0) if presupuesto_anual > 0 else 0
+            st.progress(progreso_presupuesto, text=f"Progreso actual: {progreso_presupuesto*100:.1f}% del presupuesto anual")
+            
+            # Tabla resumen de proyecciones
+            st.markdown("#### 📋 Resumen de Proyecciones")
+            
+            df_proyecciones = pd.DataFrame({
+                'Concepto': [
+                    'Venta día comparable (año anterior)',
+                    'Crecimiento real acumulado',
+                    'Proyección base',
+                    'Meta sugerida (+15%)',
+                    'Total acumulado año anterior',
+                    'Total acumulado año actual',
+                    'Proyección total anual',
+                    'Presupuesto anual'
+                ],
+                'Valor': [
+                    f'${venta_hist:,.0f}',
+                    f'{crecimiento_real*100:.2f}%',
+                    f'${proyeccion_base:,.0f}',
+                    f'${meta_sugerida:,.0f}',
+                    f'${total_acum_anterior:,.0f}',
+                    f'${total_acum_actual:,.0f}',
+                    f'${proyeccion_total_anual:,.0f}',
+                    f'${presupuesto_anual:,.0f}'
+                ]
+            })
+            
+            st.dataframe(df_proyecciones, use_container_width=True, hide_index=True)
+            
+            # Advertencia si el crecimiento es negativo
+            if crecimiento_real < 0:
+                st.warning(f"⚠️ El crecimiento real es negativo ({crecimiento_real*100:.2f}%). Considera revisar las estrategias de venta.")
+            
         else:
             st.warning("No se encontró día comparable en el año anterior.")
 
